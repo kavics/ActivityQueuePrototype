@@ -1,9 +1,19 @@
-﻿namespace ActivityQueuePrototype;
+﻿using SenseNet.Diagnostics;
+
+namespace ActivityQueuePrototype;
 
 internal class DataHandler
 {
-    public Task SaveActivityAsync(Activity activity, CancellationToken cancel)
+    readonly List<Activity> _activities = new();
+
+    public async Task SaveActivityAsync(Activity activity, CancellationToken cancel)
     {
-        return Task.CompletedTask;
+        if (_activities.Any(a => a.Id == activity.Id))
+            return;
+        using var op = SnTrace.StartOperation(() => $"DataHandler: SaveActivity A{activity.Id}");
+        // ReSharper disable once SimplifyLinqExpressionUseAll
+        _activities.Add(activity);
+        await Task.Delay(Rng.Next(20, 50), cancel).ConfigureAwait(false);
+        op.Successful = true;
     }
 }

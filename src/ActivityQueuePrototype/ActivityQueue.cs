@@ -34,7 +34,7 @@ internal class ActivityQueue : IDisposable
     public Task ExecuteAsync(Activity activity, CancellationToken cancel)
     {
         if (!activity.FromDatabase && !activity.FromReceiver)
-            _dataHandler.SaveActivityAsync(activity, cancel).ConfigureAwait(false);
+            _dataHandler.SaveActivityAsync(activity, cancel).GetAwaiter().GetResult();
 
         SnTrace.Write(() => $"ActivityQueue: Arrive A{activity.Id}");
         _arrivalQueue.Enqueue(activity);
