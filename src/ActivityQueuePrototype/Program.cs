@@ -18,6 +18,21 @@ using SenseNet.Diagnostics;
 //}
 //return;
 
+//var generator = new ActivityGenerator();
+//var maxId = 10;
+//for (int iter = 0; iter < 20; iter++)
+//{
+//    var ids = generator.GenerateRandomIds(maxId).ToArray();
+//    foreach (var id in ids)
+//        Console.Write(" {0}", id);
+//    for (int i = 1; i <= maxId; i++)
+//        if (!ids.Contains(i))
+//            Console.WriteLine("\nERROR: Missing id: " + i);
+//    Console.WriteLine();
+//}
+//return;
+
+
 SnTrace.EnableAll();
 SnTrace.SnTracers.Add(new SnFileSystemTracer());
 SnTrace.Write("-------------------------------------->");

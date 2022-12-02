@@ -45,11 +45,19 @@ internal class App : IDisposable
         var tasks = new List<Task>();
         SnTrace.Write("App: activity generator started.");
 
-        foreach (var activity in new ActivityGenerator().Generate(20,
-                     5, new RngConfig(0, 50), new RngConfig(10, 50)))
+        //// -------- random order without duplications
+        //foreach (var activity in new ActivityGenerator().Generate(20, 5, 
+        //             new RngConfig(0, 50), new RngConfig(10, 50)))
+        //{
+        //    tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
+        //}
+        // -------- random order with duplications
+        foreach (var activity in new ActivityGenerator().GenerateDuplications(100,
+                     new RngConfig(0, 50), new RngConfig(10, 50)))
         {
             tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
         }
+
         Task.WaitAll(tasks.ToArray());
 
         SnTrace.Write("App: wait for all activities finalization.");

@@ -1,8 +1,10 @@
-﻿using Newtonsoft.Json;
+﻿using System.Diagnostics;
+using Newtonsoft.Json;
 using SenseNet.Diagnostics;
 
 namespace ActivityQueuePrototype;
 
+[DebuggerDisplay("Activity A{Id}")]
 internal class Activity
 {
     [field: NonSerialized, JsonIgnore] private readonly int _delay;
@@ -31,6 +33,12 @@ internal class Activity
         return ExecutionTask;
     }
 
+    private bool _ignored;
+    internal void Ignore()
+    {
+        _ignored = true;
+    }
+
     public Task ExecuteAsync(Context context, CancellationToken cancel)
     {
         Context = context;
@@ -39,6 +47,12 @@ internal class Activity
 
     internal void ExecuteInternal()
     {
+        if (_ignored)
+        {
+            SnTrace.Write(() => $"Activity: execution ignored A{Id}");
+            return;
+        }
+
         using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Id} (delay: {_delay})");
         Task.Delay(_delay).GetAwaiter().GetResult();
         op.Successful = true;
