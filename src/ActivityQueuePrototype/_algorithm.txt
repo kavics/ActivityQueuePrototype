@@ -18,58 +18,61 @@ ActivityQueue:
 
 -----------------------------------------------------------------------------
 
-business-thread
-	arrive(activity)
-	wait if needed
+	business-thread
+ok		arrive(activity)
+ok		wait if needed
 
-receiver-thread
-	arrive(received)
+	receiver-thread
+		arrive(received)
 
-db-thread
-	LoadStarted() // set loading = true
-	Load all available items from db (id > lastId)
-	foreach current in loaded
-		arrive(current)
-	LoadFinished() // set loading = false
+	db-thread
+		LoadStarted() // set loading = true
+		Load all available items from db (id > lastId)
+		foreach current in loaded
+			arrive(current)
+		LoadFinished() // set loading = false
 
-arrive()
-	add to ArrivalList
-
-queue-thread
-	while forever
-		wait if nothing to do
-		while something to do
-			exit if nothing to do
-			move ArrivalList items to Queue (sorted by id)
-			foreach current in Queue
-				lastId = Max (lastExecutedId, lastExecutingId)
-				if (current.Id == lastId + 1) // arrived in order
-					executing = item by lastId from ExecutingList
-					if (executing != null && (current is depends from executing))
-						add executing to current.Dependencies // list
-					else
-						add current to ExecutingList
-					lastId = current.Id
-					continue
-				if (current.Id <= lastId) // already arrived or executed
-					if (nextId is in Queue) // existing in queue
-						hang on existing // attach and finish if the existing finished
+	queue-thread
+ok		while forever
+ok			wait if nothing to do
+ok			while something to do
+ok				exit if nothing to do
+ok				move ArrivalList items to Queue (sorted by id)
+ok				foreach current in Queue
+					lastId = Max (lastExecutedId, lastExecutingId)
+ok					if (current.Id == lastId + 1) // arrived in order
+						executing = item by lastId from ExecutingList
+						if (executing != null && (current is depends from executing))
+							add executing to current.Dependencies // list
+						else
+?!?							add current to ExecutingList
+ok						lastId = current.Id
 						continue
-					else // executed
-						finish current // release if blocked
-				if (current.Id > lastId + 1)  // arrived earlier
-					if (!loading)
-						Run a task for async loading all available items from db (id > lastId)
-			foreach current in ExecutingList
-				if(current has no dependencies)
-					if current.Task is not started
-						start
-					if current.Task is running
-						do nothing
-					if current.Task is failed
-						??????????????? retry? throw? (the old SecurityActivityQueue hs not any error handler code)
-					if current.Task is finished
-						finish current // release resources (e.g. thread) if needed
-						foreach dependent in ExecutingList
-							remove current from dependent.Dependencies
-			wait a bit // do not overload the CPU
+					if (current.Id <= lastId) // already arrived or executed
+						if (nextId is in Queue) // existing in queue
+							hang on existing // attach and finish if the existing finished
+							continue
+						else // executed
+							finish current // release if blocked
+					if (current.Id > lastId + 1)  // arrived earlier
+						if (!loading)
+							Run a task for async loading all available items from db (id > lastId)
+				foreach current in ExecutingList
+					if(current has no dependencies)
+						if current.Task is not started
+							start
+						if current.Task is running
+							do nothing
+						if current.Task is failed
+							??????????????? retry? throw? (the old SecurityActivityQueue hs not any error handler code)
+						if current.Task is finished
+							finish current // release resources (e.g. thread) if needed
+							foreach dependent in ExecutingList
+								remove current from dependent.Dependencies
+				wait a bit // do not overload the CPU
+-----------------------------------------------------------------------------
+TASKS
+
+- avoid duplications (done)
+- load gaps
+- handle dependencies

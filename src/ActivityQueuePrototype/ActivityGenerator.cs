@@ -12,6 +12,16 @@ internal class ActivityGenerator
             yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max));
         }
     }
+    public IEnumerable<Activity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay)
+    {
+        foreach (var id in GenerateRandomIds(maxId))
+        {
+            var delay = Rng.Next(creationDelay.Min, creationDelay.Max);
+            if (delay > 0)
+                Task.Delay(delay).Wait();
+            yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max));
+        }
+    }
     public IEnumerable<int> GenerateIds(int count, int randomness)
     {
         var ids = Enumerable.Range(1, count).ToArray();
@@ -25,5 +35,21 @@ internal class ActivityGenerator
             }
         }
         return ids;
+    }
+
+    public IEnumerable<int> GenerateRandomIds(int maxId)
+    {
+        var missingIds = new List<int>(Enumerable.Range(1, maxId));
+        var result = new List<int>();
+        for (int i = 0; i < maxId * 2; i++)
+        {
+            var id = Rng.Next(1, maxId + 1);
+            result.Add(id);
+            missingIds.Remove(id);
+            if (missingIds.Count == 0)
+                break;
+        }
+        result.AddRange(missingIds);
+        return result;
     }
 }
