@@ -50,6 +50,7 @@ internal class ActivityQueue : IDisposable
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
         SnTrace.Write("QueueThread: started");
+        var lastStartedId = 0;
         while (true)
         {
             if (cancel.IsCancellationRequested)
@@ -74,10 +75,20 @@ internal class ActivityQueue : IDisposable
             Activity activityToExecute;
             while (null != (activityToExecute = _arrivalSortedList.FirstOrDefault().Value))
             {
-                _arrivalSortedList.Remove(activityToExecute.Id);
-                var id = activityToExecute.Id;
-                SnTrace.Write(() => $"QueueThread: execution start A{id}");
-                activityToExecute.ExecutionTask.Start(TaskScheduler.Current);
+                if (activityToExecute.Id == lastStartedId + 1)
+                {
+                    _arrivalSortedList.Remove(activityToExecute.Id);
+                    var id = activityToExecute.Id;
+                    SnTrace.Write(() => $"QueueThread: execution start A{id}");
+                    activityToExecute.ExecutionTask.Start(TaskScheduler.Current);
+                    lastStartedId = activityToExecute.Id;
+                }
+                else
+                {
+                    SnTrace.Write(() => $"QueueThread: waiting for arrival A{lastStartedId + 1}");
+                    break;
+                }
+
             }
         }
         SnTrace.Write("QueueThread: finished");
