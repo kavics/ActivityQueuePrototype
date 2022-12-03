@@ -74,5 +74,6 @@ ok						lastId = current.Id
 TASKS
 
 - avoid duplications (done)
+- store when arrived
 - load gaps
 - handle dependencies

@@ -52,7 +52,7 @@ internal class App : IDisposable
         //    tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
         //}
         // -------- random order with duplications
-        foreach (var activity in new ActivityGenerator().GenerateDuplications(100,
+        foreach (var activity in new ActivityGenerator().GenerateDuplications(10,
                      new RngConfig(0, 50), new RngConfig(10, 50)))
         {
             tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
