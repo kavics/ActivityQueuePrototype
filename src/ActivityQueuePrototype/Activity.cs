@@ -53,7 +53,7 @@ internal class Activity
     {
         if (!_executionEnabled)
         {
-            SnTrace.Write(() => $"Activity: execution ignored A{Id}");
+            SnTrace.Write(() => $"Activity#: execution ignored A{Id}");
             return;
         }
 
