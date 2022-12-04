@@ -40,13 +40,13 @@ internal class ActivityQueue : IDisposable
         _arrivalQueue.Enqueue(activity);
         _waitToWorkSignal.Set();
 
-        activity.CreateExecutionTask();
-        return activity.ExecutionTask;
+        return activity.CreateExecutionTask();
     }
 
     private readonly AutoResetEvent _waitToWorkSignal = new AutoResetEvent(false);
     private readonly ConcurrentQueue<Activity> _arrivalQueue = new();
-    private readonly List<Activity> _arrivalSortedList = new();
+    private readonly List<Activity> _waitingList = new();
+    private readonly List<Activity> _executingList = new();
     private long _workCycle = 0;
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
@@ -60,7 +60,7 @@ internal class ActivityQueue : IDisposable
             SnTrace.Write($"QueueThread: waiting");
 
             // Wait if there is nothing to do
-            if(_arrivalSortedList.Count == 0)
+            if(_waitingList.Count == 0)
                 _waitToWorkSignal.WaitOne();
             if (cancel.IsCancellationRequested)
                 break;
@@ -69,31 +69,34 @@ internal class ActivityQueue : IDisposable
             _workCycle++;
             SnTrace.Custom.Write(() => $"QueueThread: works (cycle: {_workCycle}, _arrivalQueue.Count: {_arrivalQueue.Count})");
 
-            // Move arrived items to the sorted list
+            // Move arrived items to the waiting list
             while (_arrivalQueue.Count > 0)
             {
                 if(_arrivalQueue.TryDequeue(out var arrivedActivity))
-                    _arrivalSortedList.Add(arrivedActivity);
+                    _waitingList.Add(arrivedActivity);
             }
-            _arrivalSortedList.Sort((x, y) => x.Id.CompareTo(y.Id));
-            SnTrace.Write(() => $"QueueThread: _arrivalSortedList.Count: {_arrivalSortedList.Count}");
+            _waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
+            SnTrace.Write(() => $"QueueThread: _arrivalSortedList.Count: {_waitingList.Count}");
 
-            // Iterate while the sorted list is not empty
-            while (_arrivalSortedList.Count > 0)
+            // Iterate while the waiting list is not empty but exit if there was no operation in the last cycle
+            while (_waitingList.Count > 0)
             {
-                var activityToExecute = _arrivalSortedList[0];
-                if (activityToExecute.Id <= lastStartedId)
+                var activityToExecute = _waitingList[0];
+                if (activityToExecute.Id <= lastStartedId) // already arrived or executed
                 {
-                    _arrivalSortedList.RemoveAt(0);
+                    _waitingList.RemoveAt(0);
+                    //UNDONE: Attach to first instead of start immediately.
+                    //UNDONE: Start all attachments without execution after the first is finished.
                     SnTrace.Write(() => $"QueueThread: execution ignored A{activityToExecute.Id}");
-                    activityToExecute.Ignore();
-                    activityToExecute.ExecutionTask.Start(TaskScheduler.Current);
+                    activityToExecute.StartExecutionTask(false);
                 }
-                if (activityToExecute.Id == lastStartedId + 1)
+                if (activityToExecute.Id == lastStartedId + 1) // arrived in order
                 {
-                    _arrivalSortedList.RemoveAt(0);
+                    //UNDONE: Move to an execution list instead of start immediately.
+                    //UNDONE: Discover dependencies
+                    _waitingList.RemoveAt(0);
                     SnTrace.Write(() => $"QueueThread: execution start A{activityToExecute.Id}");
-                    activityToExecute.ExecutionTask.Start(TaskScheduler.Current);
+                    activityToExecute.StartExecutionTask(true);
                     lastStartedId = activityToExecute.Id;
                 }
                 else
@@ -102,6 +105,8 @@ internal class ActivityQueue : IDisposable
                     break;
                 }
             }
+            //UNDONE: Control execution in execution list. Handle attachments and dependencies.
+
             SnTrace.Write(() => $"QueueThread: wait a bit.");
             Task.Delay(1).Wait();
         }

@@ -7,15 +7,20 @@ namespace ActivityQueuePrototype;
 [DebuggerDisplay("Activity A{Id}")]
 internal class Activity
 {
-    [field: NonSerialized, JsonIgnore] private readonly int _delay;
+    [field: NonSerialized, JsonIgnore] private readonly int _delay; // for prototype only
+
+    [field: NonSerialized, JsonIgnore] private bool _executionEnabled;
+    [field: NonSerialized, JsonIgnore] private Task _executionTask;
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromReceiver { get; set; }
+
+    //UNDONE: Missing methods: WaitFor, FinishWaiting, RemoveDependency, Attach, (detach and finish)
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
+    [field: NonSerialized, JsonIgnore] internal List<Activity> Attached { get; private set; } = new List<Activity>();
 
-    [field: NonSerialized, JsonIgnore] public Task ExecutionTask { get; private set; } //UNDONE: Delete/hide ExecutionTask property if tested
 
     public int Id { get; set; }
     public string TypeName { get; }
@@ -29,14 +34,13 @@ internal class Activity
 
     internal Task CreateExecutionTask()
     {
-        ExecutionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
-        return ExecutionTask;
+        _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
+        return _executionTask;
     }
-
-    private bool _ignored;
-    internal void Ignore()
+    internal void StartExecutionTask(bool execute)
     {
-        _ignored = true;
+        _executionEnabled = execute;
+        _executionTask.Start();
     }
 
     public Task ExecuteAsync(Context context, CancellationToken cancel)
@@ -47,7 +51,7 @@ internal class Activity
 
     internal void ExecuteInternal()
     {
-        if (_ignored)
+        if (!_executionEnabled)
         {
             SnTrace.Write(() => $"Activity: execution ignored A{Id}");
             return;
