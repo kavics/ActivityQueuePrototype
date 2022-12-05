@@ -5,7 +5,7 @@ using SenseNet.Diagnostics;
 namespace ActivityQueuePrototype;
 
 [DebuggerDisplay("Activity A{Id}")]
-internal class Activity
+public class Activity
 {
     [field: NonSerialized, JsonIgnore] private readonly int _delay; // for prototype only
 
@@ -42,6 +42,8 @@ internal class Activity
         _executionEnabled = execute;
         _executionTask.Start();
     }
+
+    internal TaskStatus GetExecutionTaskStatus() => _executionTask.Status;
 
     public Task ExecuteAsync(Context context, CancellationToken cancel)
     {

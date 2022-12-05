@@ -75,5 +75,6 @@ TASKS
 
 - avoid duplications (done)
 - store when arrived (done)
+- separated execution list
 - load gaps
 - handle dependencies

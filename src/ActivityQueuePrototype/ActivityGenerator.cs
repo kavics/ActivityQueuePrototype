@@ -1,6 +1,6 @@
 ﻿namespace ActivityQueuePrototype;
 
-internal class ActivityGenerator
+public class ActivityGenerator
 {
     public IEnumerable<Activity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay)
     {

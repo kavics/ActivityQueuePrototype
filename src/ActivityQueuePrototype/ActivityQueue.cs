@@ -1,10 +1,9 @@
 ﻿using System.Collections.Concurrent;
-using System.Reflection.Metadata.Ecma335;
 using SenseNet.Diagnostics;
 
 namespace ActivityQueuePrototype;
 
-internal class ActivityQueue : IDisposable
+public class ActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
     private readonly CancellationTokenSource _activityQueueThreadControllerCancellation;
@@ -51,6 +50,7 @@ internal class ActivityQueue : IDisposable
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
         SnTrace.Write("QueueThread: started");
+        var finishedList = new List<Activity>(); // temporary
         var lastStartedId = 0;
         while (true)
         {
@@ -95,9 +95,10 @@ internal class ActivityQueue : IDisposable
                     //UNDONE: Move to an execution list instead of start immediately.
                     //UNDONE: Discover dependencies
                     _waitingList.RemoveAt(0);
-                    SnTrace.Write(() => $"QueueThread: execution start A{activityToExecute.Id}");
-                    activityToExecute.StartExecutionTask(true);
+                    SnTrace.Write(() => $"QueueThread: moved to executing list: A{activityToExecute.Id}");
+                    _executingList.Add(activityToExecute);
                     lastStartedId = activityToExecute.Id;
+                    //activityToExecute.StartExecutionTask(true);
                 }
                 else
                 {
@@ -105,7 +106,43 @@ internal class ActivityQueue : IDisposable
                     break;
                 }
             }
+
             //UNDONE: Control execution in execution list. Handle attachments and dependencies.
+            foreach (var activity in _executingList)
+            {
+                switch (activity.GetExecutionTaskStatus())
+                {
+                    // pending
+                    case TaskStatus.Created:
+                    case TaskStatus.WaitingForActivation:
+                    case TaskStatus.WaitingToRun:
+                        SnTrace.Write(() => $"QueueThread: start execution: A{activity.Id}");
+                        activity.StartExecutionTask(true);
+                        break;
+
+                    // executing
+                    case TaskStatus.Running:
+                    case TaskStatus.WaitingForChildrenToComplete:
+                        // do nothing?
+                        break;
+
+                    // finished
+                    case TaskStatus.RanToCompletion:
+                    case TaskStatus.Canceled:
+                    case TaskStatus.Faulted:
+                        //UNDONE: delete from execution list and memorize activity in the execution state.
+                        finishedList.Add(activity);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+            }
+            foreach (var finishedActivity in finishedList)
+            {
+                SnTrace.Write(() => $"QueueThread: finished: A{finishedActivity.Id}");
+                _executingList.Remove(finishedActivity);
+            }
 
             SnTrace.Write(() => $"QueueThread: wait a bit.");
             Task.Delay(1).Wait();

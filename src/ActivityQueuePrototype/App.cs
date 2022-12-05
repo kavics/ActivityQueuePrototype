@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace ActivityQueuePrototype;
 
-internal class App : IDisposable
+public class App : IDisposable
 {
     private readonly string[] _args;
     private readonly ActivityQueue _activityQueue;
@@ -19,7 +19,7 @@ internal class App : IDisposable
 
     public async Task RunAsync()
     {
-        SnTrace.Write("App start.");
+        SnTrace.Write("App: start.");
 
         var context = new Context(_activityQueue);
         var cancellation = new CancellationTokenSource();
@@ -45,18 +45,18 @@ internal class App : IDisposable
         var tasks = new List<Task>();
         SnTrace.Write("App: activity generator started.");
 
-        //// -------- random order without duplications
-        //foreach (var activity in new ActivityGenerator().Generate(20, 5, 
+        // -------- random order without duplications
+        foreach (var activity in new ActivityGenerator().Generate(2, 5,
+                     new RngConfig(0, 50), new RngConfig(10, 50)))
+        {
+            tasks.Add(Task.Run(() => ExecuteActivity(activity, context, cancellation.Token)));
+        }
+        //// -------- random order with duplications
+        //foreach (var activity in new ActivityGenerator().GenerateDuplications(2,
         //             new RngConfig(0, 50), new RngConfig(10, 50)))
         //{
         //    tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
         //}
-        // -------- random order with duplications
-        foreach (var activity in new ActivityGenerator().GenerateDuplications(10,
-                     new RngConfig(0, 50), new RngConfig(10, 50)))
-        {
-            tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
-        }
 
         Task.WaitAll(tasks.ToArray());
 
@@ -65,18 +65,13 @@ internal class App : IDisposable
         SnTrace.Write("App: finished.");
     }
 
-    private List<Activity> _activities = new();
-    public async Task ExecuteActivity(int id, int delay, Context context, CancellationToken cancel)
+    public static  Task ExecuteActivity(int id, int delay, Context context, CancellationToken cancel)
     {
         var activity = new Activity(id, delay);
-        _activities.Add(activity);
-        using var op = SnTrace.StartOperation(() => $"App: Business executes A{activity.Id}");
-        await activity.ExecuteAsync(context, cancel);
-        op.Successful = true;
+        return ExecuteActivity(activity, context, cancel);
     }
-    public async Task ExecuteActivity2(Activity activity, Context context, CancellationToken cancel)
+    public static async Task ExecuteActivity(Activity activity, Context context, CancellationToken cancel)
     {
-        _activities.Add(activity);
         using var op = SnTrace.StartOperation(() => $"App: Business executes A{activity.Id}");
         await activity.ExecuteAsync(context, cancel);
         op.Successful = true;

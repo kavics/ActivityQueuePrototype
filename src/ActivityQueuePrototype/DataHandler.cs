@@ -2,7 +2,7 @@
 
 namespace ActivityQueuePrototype;
 
-internal class DataHandler
+public class DataHandler
 {
     readonly List<Activity> _activities = new();
 
