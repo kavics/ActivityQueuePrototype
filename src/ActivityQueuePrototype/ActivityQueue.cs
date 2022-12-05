@@ -35,7 +35,7 @@ public class ActivityQueue : IDisposable
         if (!activity.FromDatabase && !activity.FromReceiver)
             _dataHandler.SaveActivityAsync(activity, cancel).GetAwaiter().GetResult();
 
-        SnTrace.Write(() => $"ActivityQueue: Arrive A{activity.Id}");
+        SnTrace.Write(() => $"ActivityQueue: Arrive A{activity.Key}");
         _arrivalQueue.Enqueue(activity);
         _waitToWorkSignal.Set();
 
@@ -87,7 +87,7 @@ public class ActivityQueue : IDisposable
                     _waitingList.RemoveAt(0);
                     //UNDONE: Attach to first instead of start immediately.
                     //UNDONE: Start all attachments without execution after the first is finished.
-                    SnTrace.Write(() => $"QueueThread: execution ignored A{activityToExecute.Id}");
+                    SnTrace.Write(() => $"QueueThread: execution ignored A{activityToExecute.Key}");
                     activityToExecute.StartExecutionTask(false);
                 }
                 if (activityToExecute.Id == lastStartedId + 1) // arrived in order
@@ -95,7 +95,7 @@ public class ActivityQueue : IDisposable
                     //UNDONE: Move to an execution list instead of start immediately.
                     //UNDONE: Discover dependencies
                     _waitingList.RemoveAt(0);
-                    SnTrace.Write(() => $"QueueThread: moved to executing list: A{activityToExecute.Id}");
+                    SnTrace.Write(() => $"QueueThread: moved to executing list: A{activityToExecute.Key}");
                     _executingList.Add(activityToExecute);
                     lastStartedId = activityToExecute.Id;
                     //activityToExecute.StartExecutionTask(true);
@@ -116,7 +116,7 @@ public class ActivityQueue : IDisposable
                     case TaskStatus.Created:
                     case TaskStatus.WaitingForActivation:
                     case TaskStatus.WaitingToRun:
-                        SnTrace.Write(() => $"QueueThread: start execution: A{activity.Id}");
+                        SnTrace.Write(() => $"QueueThread: start execution: A{activity.Key}");
                         activity.StartExecutionTask(true);
                         break;
 
@@ -140,7 +140,7 @@ public class ActivityQueue : IDisposable
             }
             foreach (var finishedActivity in finishedList)
             {
-                SnTrace.Write(() => $"QueueThread: finished: A{finishedActivity.Id}");
+                SnTrace.Write(() => $"QueueThread: finished: A{finishedActivity.Key}");
                 _executingList.Remove(finishedActivity);
             }
 

@@ -7,6 +7,8 @@ namespace ActivityQueuePrototype;
 [DebuggerDisplay("Activity A{Id}")]
 public class Activity
 {
+    [field: NonSerialized, JsonIgnore] private static int _objectId; // for prototype only
+
     [field: NonSerialized, JsonIgnore] private readonly int _delay; // for prototype only
 
     [field: NonSerialized, JsonIgnore] private bool _executionEnabled;
@@ -20,6 +22,7 @@ public class Activity
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> Attached { get; private set; } = new List<Activity>();
+    [field: NonSerialized, JsonIgnore] internal string Key { get; }
 
 
     public int Id { get; set; }
@@ -27,6 +30,8 @@ public class Activity
 
     public Activity(int id, int delay)
     {
+        Interlocked.Increment(ref _objectId);
+        Key = $"{id}-{_objectId}";
         Id = id;
         _delay = delay;
         TypeName = GetType().Name;
@@ -55,11 +60,11 @@ public class Activity
     {
         if (!_executionEnabled)
         {
-            SnTrace.Write(() => $"Activity#: execution ignored A{Id}");
+            SnTrace.Write(() => $"Activity: execution ignored A{Key}");
             return;
         }
 
-        using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Id} (delay: {_delay})");
+        using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Key} (delay: {_delay})");
         Task.Delay(_delay).GetAwaiter().GetResult();
         op.Successful = true;
     }
