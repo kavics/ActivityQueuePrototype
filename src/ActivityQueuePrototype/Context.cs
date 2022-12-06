@@ -1,6 +1,6 @@
 ﻿namespace ActivityQueuePrototype;
 
-internal class Context
+public class Context
 {
     public ActivityQueue ActivityQueue { get; }
 

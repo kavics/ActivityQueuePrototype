@@ -1,6 +1,27 @@
 ﻿using ActivityQueuePrototype;
 using SenseNet.Diagnostics;
 
+
+
+
+//Task parent = Task.Factory.StartNew(() =>
+//{
+//    Task child = Task.Factory.StartNew(() => Thread.Sleep(200),
+//        TaskCreationOptions.AttachedToParent);
+//});
+//Console.WriteLine($"Status: {parent.Status}");
+//Thread.Sleep(110);
+//Console.WriteLine($"Status: {parent.Status}");
+//Thread.Sleep(110);
+//Console.WriteLine($"Status: {parent.Status}");
+// /*
+// result:
+// Status: WaitingToRun
+// Status: WaitingForChildrenToComplete
+// Status: RanToCompletion
+// */
+//return;
+
 //for (int i = 0; i < 20; i++)
 //{
 //    foreach(var id in new ActivityGenerator().GenerateIds(20, 5))

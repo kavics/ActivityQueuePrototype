@@ -18,7 +18,7 @@ ActivityQueue:
 
 -----------------------------------------------------------------------------
 
-	business-thread
+ok	business-thread
 ok		arrive(activity)
 ok		wait if needed
 
@@ -37,7 +37,7 @@ ok		while forever
 ok			wait if nothing to do
 ok			while something to do
 ok				exit if nothing to do
-ok				move ArrivalList items to Queue (sorted by id)
+ok				move ArrivalList items to the waiting list (sorted by id)
 ok				foreach current in Queue
 					lastId = Max (lastExecutedId, lastExecutingId)
 ok					if (current.Id == lastId + 1) // arrived in order
@@ -48,12 +48,12 @@ ok					if (current.Id == lastId + 1) // arrived in order
 ?!?							add current to ExecutingList
 ok						lastId = current.Id
 						continue
-					if (current.Id <= lastId) // already arrived or executed
-						if (nextId is in Queue) // existing in queue
-							hang on existing // attach and finish if the existing finished
-							continue
-						else // executed
-							finish current // release if blocked
+>					if (current.Id <= lastId) // already arrived or executed
+>						if (nextId is in Queue) // existing in queue
+>							hang on existing // attach and finish if the existing finished
+>							continue
+>						else // executed
+>							finish current // release if blocked
 					if (current.Id > lastId + 1)  // arrived earlier
 						if (!loading)
 							Run a task for async loading all available items from db (id > lastId)
@@ -74,6 +74,7 @@ ok						lastId = current.Id
 TASKS
 
 - avoid duplications (done)
-- store when arrived
+- store when arrived (done)
+- separated execution list
 - load gaps
 - handle dependencies

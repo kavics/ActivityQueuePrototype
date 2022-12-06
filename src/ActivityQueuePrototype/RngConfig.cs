@@ -1,14 +1,13 @@
-﻿namespace ActivityQueuePrototype
-{
-    internal struct RngConfig
-    {
-        public int Min;
-        public int Max;
+﻿namespace ActivityQueuePrototype;
 
-        public RngConfig(int min, int max)
-        {
-            Min = min;
-            Max = max;
-        }
+public struct RngConfig
+{
+    public int Min;
+    public int Max;
+
+    public RngConfig(int min, int max)
+    {
+        Min = min;
+        Max = max;
     }
 }
