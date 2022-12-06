@@ -33,43 +33,4 @@ public class ActivityGeneratorTests
                 q += Math.Abs(i - ids[i]);
             Assert.IsTrue(q > 2);
     }
-
-
-
-    [TestMethod]
-    public void G_One()
-    {
-        // Arrange
-        var expected = 42;
-
-        // Action
-        var activity = new ActivityGenerator().GenerateOne(expected);
-
-        // Assert
-        Assert.AreEqual(expected, activity.Id);
-    }
-    [TestMethod]
-    public void G_1()
-    {
-        // Arrange
-        var expected = 42;
-
-        // Action
-        var activity = new ActivityGenerator().GenerateOne(expected);
-
-        // Assert
-        Assert.AreEqual(expected, activity.Id);
-    }
-    [TestMethod]
-    public void G_2()
-    {
-        // Arrange
-        var expected = 142;
-
-        // Action
-        var activity = new ActivityGenerator().GenerateOne(expected);
-
-        // Assert
-        Assert.AreEqual(expected, activity.Id);
-    }
 }
