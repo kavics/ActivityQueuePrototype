@@ -11,8 +11,8 @@ public class Activity
 
     [field: NonSerialized, JsonIgnore] private readonly int _delay; // for prototype only
 
-    [field: NonSerialized, JsonIgnore] private bool _executionEnabled;
     [field: NonSerialized, JsonIgnore] private Task _executionTask;
+    [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
@@ -21,7 +21,7 @@ public class Activity
     //UNDONE: Missing methods: WaitFor, FinishWaiting, RemoveDependency, Attach, (detach and finish)
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
-    [field: NonSerialized, JsonIgnore] internal List<Activity> Attached { get; private set; } = new List<Activity>();
+    [field: NonSerialized, JsonIgnore] internal List<Activity> Attachments { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal string Key { get; }
 
 
@@ -37,18 +37,22 @@ public class Activity
         TypeName = GetType().Name;
     }
 
-    internal Task CreateExecutionTask()
+    internal Task CreateTaskForWait()
+    {
+        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning);
+        return _finalizationTask;
+    }
+    internal void StartExecutionTask()
     {
         _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
-        return _executionTask;
-    }
-    internal void StartExecutionTask(bool execute)
-    {
-        _executionEnabled = execute;
         _executionTask.Start();
     }
+    internal void StartFinalizationTask()
+    {
+        _finalizationTask.Start();
+    }
 
-    internal TaskStatus GetExecutionTaskStatus() => _executionTask.Status;
+    internal TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
 
     public Task ExecuteAsync(Context context, CancellationToken cancel)
     {
@@ -58,12 +62,6 @@ public class Activity
 
     internal void ExecuteInternal()
     {
-        if (!_executionEnabled)
-        {
-            SnTrace.Write(() => $"Activity: execution ignored A{Key}");
-            return;
-        }
-
         using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Key} (delay: {_delay})");
         Task.Delay(_delay).GetAwaiter().GetResult();
         op.Successful = true;

@@ -1,20 +1,20 @@
-﻿namespace ActivityQueuePrototype;
+﻿using System.Collections;
+
+namespace ActivityQueuePrototype;
 
 public class ActivityGenerator
 {
     public IEnumerable<Activity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay)
     {
-        foreach (var id in GenerateIds(count, randomness))
-        {
-            var delay = Rng.Next(creationDelay.Min, creationDelay.Max);
-            if (delay > 0)
-                Task.Delay(delay).Wait();
-            yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max));
-        }
+        return GenerateByIds(GenerateIds(count, randomness), creationDelay, executionDelay);
     }
     public IEnumerable<Activity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay)
     {
-        foreach (var id in GenerateRandomIds(maxId))
+        return GenerateByIds(GenerateRandomIds(maxId), creationDelay, executionDelay);
+    }
+    public IEnumerable<Activity> GenerateByIds(IEnumerable<int> ids, RngConfig creationDelay, RngConfig executionDelay)
+    {
+        foreach (var id in ids)
         {
             var delay = Rng.Next(creationDelay.Min, creationDelay.Max);
             if (delay > 0)
@@ -22,6 +22,7 @@ public class ActivityGenerator
             yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max));
         }
     }
+
     public IEnumerable<int> GenerateIds(int count, int randomness)
     {
         var ids = Enumerable.Range(1, count).ToArray();
@@ -51,5 +52,10 @@ public class ActivityGenerator
         }
         result.AddRange(missingIds);
         return result;
+    }
+
+    public Activity GenerateOne(int id)
+    {
+        return new Activity(id, 0);
     }
 }

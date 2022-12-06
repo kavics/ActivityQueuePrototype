@@ -9,7 +9,7 @@ using SenseNet.Diagnostics.Analysis;
 namespace ActivityQueuePrototypeTests;
 
 [TestClass]
-public class UnitTest1
+public class ActivityQueueTests
 {
     private class TestTracer:ISnTracer
     {
@@ -78,8 +78,8 @@ public class UnitTest1
     }
 
     [DataRow(4)]
-    //[DataRow(16)]
-    //[DataRow(100)]
+    [DataRow(16)]
+    [DataRow(100)]
     [DataTestMethod]
     public async Task AQ_RandomActivities_WithDuplications(int count)
     {
@@ -94,7 +94,7 @@ public class UnitTest1
 
         // -------- random order with duplications
         foreach (var activity in new ActivityGenerator().GenerateDuplications(count,
-                     new RngConfig(0, 50), new RngConfig(10, 50)))
+                     new RngConfig(0, 50), new RngConfig(10, 10)))
         {
             tasks.Add(Task.Run(() => App.ExecuteActivity(activity, context, cancellation.Token)));
         }
@@ -107,6 +107,35 @@ public class UnitTest1
 
         var trace = _testTracer.Lines;
         var msg = CheckTrace(trace, count);
+        Assert.AreEqual(null, msg);
+    }
+
+    [TestMethod]
+    public async Task AQ_Activities_Duplications()
+    {
+        var dataHandler = new DataHandler();
+        var activityQueue = new ActivityQueue(dataHandler);
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+
+        var tasks = new List<Task>();
+        SnTrace.Write("App: activity generator started.");
+
+        // -------- random order with duplications
+        foreach (var activity in new ActivityGenerator().GenerateByIds(new[] {1, 1, 1},
+                     new RngConfig(0, 0), new RngConfig(50, 50)))
+        {
+            tasks.Add(Task.Run(() => App.ExecuteActivity(activity, context, cancellation.Token)));
+        }
+
+        Task.WaitAll(tasks.ToArray());
+
+        SnTrace.Write("App: wait for all activities finalization.");
+        await Task.Delay(1000).ConfigureAwait(false);
+        SnTrace.Write("App: finished.");
+
+        var trace = _testTracer.Lines;
+        var msg = CheckTrace(trace, 1);
         Assert.AreEqual(null, msg);
     }
 
@@ -133,7 +162,9 @@ public class UnitTest1
                 item.InternalExecutionStart = entry.Time - t0;
             else if (ParseLine(allEvents, entry, "Activity: ExecuteInternal ", "End", out item))
                 item.InternalExecutionEnd = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "QueueThread: execution ignored ", null, out item))
+            else if (ParseLine(allEvents, entry, "QueueThread: execution ignored immediately: ", null, out item))
+                item.ExecutionIgnored = true;
+            else if (ParseLine(allEvents, entry, "QueueThread: execution ignored (attachment): ", null, out item))
                 item.ExecutionIgnored = true;
         }
 
@@ -172,7 +203,14 @@ public class UnitTest1
             {
                 // The BusinessEnd of all ignored items should greater BusinessEnd of executed item
                 //     otherwise send message: "released earlier."
-                
+                var executed = events.Values
+                    .First(x => !x.ExecutionIgnored);
+                var ignored = events.Values
+                    .Where(x => x.ExecutionIgnored)
+                    .ToArray();
+                foreach (var item in ignored)
+                    if(item.BusinessEnd <= executed.BusinessEnd)
+                        return $"A{item.Id} is executed too early.";
             }
         }
 
@@ -187,15 +225,16 @@ public class UnitTest1
                 return $"execTimes[{i}] and execTimes[{i+1}] are not in the right order.";
         }
 
-        var businessEndIdsOrderedByTime = allEvents.Values
-            .OrderBy(x => x.BusinessEnd)
-            .Select(x => x.Id)
-            .ToArray();
-        for (var i = 0; i < businessEndIdsOrderedByTime.Length - 1; i++)
-        {
-            if (businessEndIdsOrderedByTime[i] > businessEndIdsOrderedByTime[i + 1])
-                return $"businessEndIdsOrderedByTime[{i}] and businessEndIdsOrderedByTime[{i + 1}] are not in the right order.";
-        }
+        //var businessEndIdsOrderedByTime = allEvents.Values
+        //    .Where(x => !x.ExecutionIgnored)
+        //    .OrderBy(x => x.BusinessEnd)
+        //    .Select(x => x.Id)
+        //    .ToArray();
+        //for (var i = 0; i < businessEndIdsOrderedByTime.Length - 1; i++)
+        //{
+        //    if (businessEndIdsOrderedByTime[i] > businessEndIdsOrderedByTime[i + 1])
+        //        return $"businessEndIdsOrderedByTime[{i}] and businessEndIdsOrderedByTime[{i + 1}] are not in the right order.";
+        //}
 
         return null;
     }

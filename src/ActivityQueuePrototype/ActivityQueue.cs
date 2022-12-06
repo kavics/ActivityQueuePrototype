@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using SenseNet.Diagnostics;
 
 namespace ActivityQueuePrototype;
@@ -39,7 +40,7 @@ public class ActivityQueue : IDisposable
         _arrivalQueue.Enqueue(activity);
         _waitToWorkSignal.Set();
 
-        return activity.CreateExecutionTask();
+        return activity.CreateTaskForWait();
     }
 
     private readonly AutoResetEvent _waitToWorkSignal = new AutoResetEvent(false);
@@ -57,17 +58,20 @@ public class ActivityQueue : IDisposable
             if (cancel.IsCancellationRequested)
                 break;
 
-            SnTrace.Write($"QueueThread: waiting");
-
             // Wait if there is nothing to do
-            if(_waitingList.Count == 0)
+            if (_waitingList.Count == 0 && _executingList.Count == 0)
+            {
+                SnTrace.Write(() => $"QueueThread: waiting for arrival A{lastStartedId + 1}");
                 _waitToWorkSignal.WaitOne();
+            }
             if (cancel.IsCancellationRequested)
                 break;
 
             // Continue working
             _workCycle++;
-            SnTrace.Custom.Write(() => $"QueueThread: works (cycle: {_workCycle}, _arrivalQueue.Count: {_arrivalQueue.Count})");
+            SnTrace.Custom.Write(() => $"QueueThread: works (cycle: {_workCycle}, " +
+                                       $"_arrivalQueue.Count: {_arrivalQueue.Count}), " +
+                                       $"_executingList.Count: {_executingList.Count}");
 
             // Move arrived items to the waiting list
             while (_arrivalQueue.Count > 0)
@@ -87,27 +91,36 @@ public class ActivityQueue : IDisposable
                     _waitingList.RemoveAt(0);
                     //UNDONE: Attach to first instead of start immediately.
                     //UNDONE: Start all attachments without execution after the first is finished.
-                    SnTrace.Write(() => $"QueueThread: execution ignored A{activityToExecute.Key}");
-                    activityToExecute.StartExecutionTask(false);
+
+                    var existing = _executingList.FirstOrDefault(x => x.Id == activityToExecute.Id);
+                    if (existing != null)
+                    {
+                        SnTrace.Write(() => $"QueueThread: activity attached to another one: " +
+                                            $"A{activityToExecute.Key} -> A{existing.Key}");
+                        existing.Attachments.Add(activityToExecute);
+                    }
+                    else
+                    {
+                        SnTrace.Write(() => $"QueueThread: execution ignored immediately: A{activityToExecute.Key}");
+                        activityToExecute.StartFinalizationTask();
+                    }
                 }
                 if (activityToExecute.Id == lastStartedId + 1) // arrived in order
                 {
-                    //UNDONE: Move to an execution list instead of start immediately.
                     //UNDONE: Discover dependencies
                     _waitingList.RemoveAt(0);
                     SnTrace.Write(() => $"QueueThread: moved to executing list: A{activityToExecute.Key}");
                     _executingList.Add(activityToExecute);
                     lastStartedId = activityToExecute.Id;
-                    //activityToExecute.StartExecutionTask(true);
                 }
                 else
                 {
-                    SnTrace.Write(() => $"QueueThread: waiting for arrival A{lastStartedId + 1}");
                     break;
                 }
             }
-
+            //TODO: asdf
             //UNDONE: Control execution in execution list. Handle attachments and dependencies.
+            // Enumerate parallel-executable activities. Dependencies are attached or chained.
             foreach (var activity in _executingList)
             {
                 switch (activity.GetExecutionTaskStatus())
@@ -117,7 +130,7 @@ public class ActivityQueue : IDisposable
                     case TaskStatus.WaitingForActivation:
                     case TaskStatus.WaitingToRun:
                         SnTrace.Write(() => $"QueueThread: start execution: A{activity.Key}");
-                        activity.StartExecutionTask(true);
+                        activity.StartExecutionTask();
                         break;
 
                     // executing
@@ -136,13 +149,21 @@ public class ActivityQueue : IDisposable
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-
             }
             foreach (var finishedActivity in finishedList)
             {
-                SnTrace.Write(() => $"QueueThread: finished: A{finishedActivity.Key}");
+                SnTrace.Write(() => $"QueueThread: execution finished: A{finishedActivity.Key}");
+                finishedActivity.StartFinalizationTask();
                 _executingList.Remove(finishedActivity);
+                foreach (var attachment in finishedActivity.Attachments)
+                {
+                    SnTrace.Write(() => $"QueueThread: execution ignored (attachment): A{attachment.Key}");
+                    //attachment.StartExecutionTask(false);
+                    attachment.StartFinalizationTask();
+                }
+                //UNDONE: Handle dependencies
             }
+            finishedList.Clear();
 
             SnTrace.Write(() => $"QueueThread: wait a bit.");
             Task.Delay(1).Wait();
