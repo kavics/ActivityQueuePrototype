@@ -58,7 +58,7 @@ public class App : IDisposable
         //    tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
         //}
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks.ToArray());
 
         SnTrace.Write("App: wait for all activities finalization.");
         await Task.Delay(1_000).ConfigureAwait(false);

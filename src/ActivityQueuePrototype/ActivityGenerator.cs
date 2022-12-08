@@ -4,22 +4,25 @@ namespace ActivityQueuePrototype;
 
 public class ActivityGenerator
 {
-    public IEnumerable<Activity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay)
+    public IEnumerable<Activity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay,
+        Func<Activity, Activity, bool>? checkDependencyCallback = null)
     {
-        return GenerateByIds(GenerateIds(count, randomness), creationDelay, executionDelay);
+        return GenerateByIds(GenerateIds(count, randomness), creationDelay, executionDelay, checkDependencyCallback);
     }
-    public IEnumerable<Activity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay)
+    public IEnumerable<Activity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay,
+        Func<Activity, Activity, bool>? checkDependencyCallback = null)
     {
-        return GenerateByIds(GenerateRandomIds(maxId), creationDelay, executionDelay);
+        return GenerateByIds(GenerateRandomIds(maxId), creationDelay, executionDelay, checkDependencyCallback);
     }
-    public IEnumerable<Activity> GenerateByIds(IEnumerable<int> ids, RngConfig creationDelay, RngConfig executionDelay)
+    public IEnumerable<Activity> GenerateByIds(IEnumerable<int> ids, RngConfig creationDelay, RngConfig executionDelay,
+        Func<Activity, Activity, bool>? checkDependencyCallback = null)
     {
         foreach (var id in ids)
         {
             var delay = Rng.Next(creationDelay.Min, creationDelay.Max);
             if (delay > 0)
                 Task.Delay(delay).Wait();
-            yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max));
+            yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max), checkDependencyCallback);
         }
     }
 
@@ -52,10 +55,5 @@ public class ActivityGenerator
         }
         result.AddRange(missingIds);
         return result;
-    }
-
-    public Activity GenerateOne(int id)
-    {
-        return new Activity(id, 0);
     }
 }
