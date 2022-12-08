@@ -7,25 +7,25 @@ namespace ActivityQueuePrototype;
 public class ActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
-    private readonly CancellationTokenSource _activityQueueThreadControllerCancellation;
+    private readonly CancellationTokenSource _activityQueueControllerThreadCancellation;
     private readonly Task _activityQueueThreadController;
 
     public ActivityQueue(DataHandler dataHandler)
     {
         _dataHandler = dataHandler;
-        _activityQueueThreadControllerCancellation = new CancellationTokenSource();
+        _activityQueueControllerThreadCancellation = new CancellationTokenSource();
         _activityQueueThreadController = Task.Factory.StartNew(
-            () => ControlActivityQueueThread(_activityQueueThreadControllerCancellation.Token),
-            _activityQueueThreadControllerCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
+            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     public void Dispose()
     {
-        _activityQueueThreadControllerCancellation.Cancel();
+        _activityQueueControllerThreadCancellation.Cancel();
         _waitToWorkSignal.Set();
         Task.Delay(100).GetAwaiter().GetResult();
         _activityQueueThreadController.Dispose();
-        _activityQueueThreadControllerCancellation.Dispose();
+        _activityQueueControllerThreadCancellation.Dispose();
         SnTrace.Write("ActivityQueue: disposed");
     }
 
@@ -47,13 +47,13 @@ public class ActivityQueue : IDisposable
     private readonly ConcurrentQueue<Activity> _arrivalQueue = new();
     private readonly List<Activity> _waitingList = new();
     private readonly List<Activity> _executingList = new();
+    private Task? _activityLoaderTask;
     private long _workCycle = 0;
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
         SnTrace.Write("QueueThread: started");
         var finishedList = new List<Activity>(); // temporary
         var lastStartedId = 0;
-
 
         while (true)
         {
@@ -116,7 +116,6 @@ public class ActivityQueue : IDisposable
                         _waitingList.RemoveAt(0);
 
                         // Discover dependencies
-                        //UNDONE: discover dependencies in deep (see WaitForMe list too)
                         foreach (var activityUnderExecution in GetAllFromChains(_executingList))
                             if (activityToExecute.ShouldWaitFor(activityUnderExecution))
                                 activityToExecute.WaitFor(activityUnderExecution);
@@ -133,7 +132,13 @@ public class ActivityQueue : IDisposable
                     }
                     else
                     {
-                        //UNDONE: load from db
+                        // Load from database async
+                        if (_activityLoaderTask == null)
+                        {
+                            var id = lastStartedId;
+                            _activityLoaderTask = Task.Run(() => LoadLastActivities(id + 1, cancel));
+                        }
+
                         break;
                     }
                 }
@@ -141,7 +146,7 @@ public class ActivityQueue : IDisposable
                 // Enumerate parallel-executable activities. Dependencies are attached or chained.
                 foreach (var activity in _executingList)
                 {
-                    if (activity.WaitingFor.Count > 0)
+                    if (activity.WaitingFor.Count > 0) //UNDONE: ??
                         continue;
 
                     switch (activity.GetExecutionTaskStatus())
@@ -216,6 +221,15 @@ public class ActivityQueue : IDisposable
         }
 
         SnTrace.Write("QueueThread: finished");
+    }
+    private async Task LoadLastActivities(int fromId, CancellationToken cancel)
+    {
+        var loaded = await _dataHandler.LoadLastActivities(fromId, cancel);
+        foreach (var activity in loaded)
+        {
+            SnTrace.Write(() => $"ActivityQueue: Arrive from database A{activity.Key}");
+            _arrivalQueue.Enqueue(activity);
+        }
     }
 
     private IEnumerable<Activity> GetAllFromChains(List<Activity> roots)

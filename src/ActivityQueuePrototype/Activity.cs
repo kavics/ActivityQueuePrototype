@@ -51,7 +51,7 @@ public class Activity
     }
     internal void StartFinalizationTask()
     {
-        _finalizationTask.Start();
+        _finalizationTask?.Start();
     }
 
     internal TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
@@ -92,4 +92,8 @@ public class Activity
         dependencyList.RemoveAll(x => x.Id == activity.Id);
     }
 
+    public Activity Clone()
+    {
+        return new Activity(Id, _delay, _checkDependencyCallback);
+    }
 }
