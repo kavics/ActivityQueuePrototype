@@ -66,14 +66,14 @@ public class Activity
 
     internal void ExecuteInternal()
     {
-        using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Key} (delay: {_delay})");
+        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
         Task.Delay(_delay).GetAwaiter().GetResult();
         op.Successful = true;
     }
 
     public void WaitFor(Activity olderActivity)
     {
-        SnTrace.Write(() => $"Activity: Make dependency: A{Key} depends from {olderActivity.Key}.");
+        SnTrace.Write(() => $"SA: Make dependency: #SA{Key} depends from SA{olderActivity.Key}.");
         // this method should called from thread safe block.
         if (WaitingFor.All(x => x.Id != olderActivity.Id))
             WaitingFor.Add(olderActivity);

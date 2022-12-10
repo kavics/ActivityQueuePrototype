@@ -26,7 +26,7 @@ public class ActivityQueue : IDisposable
         Task.Delay(100).GetAwaiter().GetResult();
         _activityQueueThreadController.Dispose();
         _activityQueueControllerThreadCancellation.Dispose();
-        SnTrace.Write("ActivityQueue: disposed");
+        SnTrace.Write("SAQ: disposed");
     }
 
 
@@ -36,7 +36,7 @@ public class ActivityQueue : IDisposable
         if (!activity.FromDatabase && !activity.FromReceiver)
             _dataHandler.SaveActivityAsync(activity, cancel).GetAwaiter().GetResult();
 
-        SnTrace.Write(() => $"ActivityQueue: Arrive A{activity.Key}");
+        SnTrace.Write(() => $"SAQ: Arrive #SA{activity.Key}");
         _arrivalQueue.Enqueue(activity);
         _waitToWorkSignal.Set();
 
@@ -51,7 +51,7 @@ public class ActivityQueue : IDisposable
     private long _workCycle = 0;
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
-        SnTrace.Write("QueueThread: started");
+        SnTrace.Write("SAQT: started");
         var finishedList = new List<Activity>(); // temporary
         var lastStartedId = 0;
 
@@ -65,7 +65,7 @@ public class ActivityQueue : IDisposable
                 // Wait if there is nothing to do
                 if (_waitingList.Count == 0 && _executingList.Count == 0)
                 {
-                    SnTrace.Write(() => $"QueueThread: waiting for arrival A{lastStartedId + 1}");
+                    SnTrace.Write(() => $"SAQT: waiting for arrival #SA{lastStartedId + 1}");
                     _waitToWorkSignal.WaitOne();
                 }
 
@@ -74,7 +74,7 @@ public class ActivityQueue : IDisposable
 
                 // Continue working
                 _workCycle++;
-                SnTrace.Custom.Write(() => $"QueueThread: works (cycle: {_workCycle}, " +
+                SnTrace.Custom.Write(() => $"SAQT: works (cycle: {_workCycle}, " +
                                            $"_arrivalQueue.Count: {_arrivalQueue.Count}), " +
                                            $"_executingList.Count: {_executingList.Count}");
 
@@ -86,7 +86,7 @@ public class ActivityQueue : IDisposable
                 }
 
                 _waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
-                SnTrace.Write(() => $"QueueThread: _arrivalSortedList.Count: {_waitingList.Count}");
+                SnTrace.Write(() => $"SAQT: _arrivalSortedList.Count: {_waitingList.Count}");
 
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
@@ -100,14 +100,14 @@ public class ActivityQueue : IDisposable
                             .FirstOrDefault(x => x.Id == activityToExecute.Id);
                         if (existing != null)
                         {
-                            SnTrace.Write(() => $"QueueThread: activity attached to another one: " +
-                                                $"A{activityToExecute.Key} -> A{existing.Key}");
+                            SnTrace.Write(() => $"SAQT: activity attached to another one: " +
+                                                $"#SA{activityToExecute.Key} -> SA{existing.Key}");
                             existing.Attachments.Add(activityToExecute);
                         }
                         else
                         {
                             SnTrace.Write(() =>
-                                $"QueueThread: execution ignored immediately: A{activityToExecute.Key}");
+                                $"SAQT: execution ignored immediately: #SA{activityToExecute.Key}");
                             activityToExecute.StartFinalizationTask();
                         }
                     }
@@ -123,7 +123,7 @@ public class ActivityQueue : IDisposable
                         // Add to concurrently executable list
                         if (activityToExecute.WaitingFor.Count == 0)
                         {
-                            SnTrace.Write(() => $"QueueThread: moved to executing list: A{activityToExecute.Key}");
+                            SnTrace.Write(() => $"SAQT: moved to executing list: #SA{activityToExecute.Key}");
                             _executingList.Add(activityToExecute);
                         }
 
@@ -155,7 +155,7 @@ public class ActivityQueue : IDisposable
                         case TaskStatus.Created:
                         case TaskStatus.WaitingForActivation:
                         case TaskStatus.WaitingToRun:
-                            SnTrace.Write(() => $"QueueThread: start execution: A{activity.Key}");
+                            SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
                             activity.StartExecutionTask();
                             break;
 
@@ -178,14 +178,14 @@ public class ActivityQueue : IDisposable
 
                 foreach (var finishedActivity in finishedList)
                 {
-                    SnTrace.Write(() => $"QueueThread: execution finished: A{finishedActivity.Key}");
+                    SnTrace.Write(() => $"SAQT: execution finished: #SA{finishedActivity.Key}");
                     //UNDONE: memorize activity in the ActivityHistory.
                     finishedActivity.StartFinalizationTask();
                     _executingList.Remove(finishedActivity);
 
                     foreach (var attachment in finishedActivity.Attachments)
                     {
-                        SnTrace.Write(() => $"QueueThread: execution ignored (attachment): A{attachment.Key}");
+                        SnTrace.Write(() => $"SAQT: execution ignored (attachment): #SA{attachment.Key}");
                         attachment.StartFinalizationTask();
                     }
 
@@ -194,7 +194,7 @@ public class ActivityQueue : IDisposable
                     // Handle dependencies: start completely freed dependent activities by adding them to executing-list.
                     foreach (var dependentActivity in finishedActivity.WaitingForMe.ToArray())
                     {
-                        SnTrace.Write(() => $"QueueThread: activate dependent: A{dependentActivity.Key}");
+                        SnTrace.Write(() => $"SAQT: activate dependent: #SA{dependentActivity.Key}");
                         dependentActivity.FinishWaiting(finishedActivity);
                         if (dependentActivity.WaitingFor.Count == 0)
                             _executingList.Add(dependentActivity);
@@ -206,7 +206,7 @@ public class ActivityQueue : IDisposable
 
                 finishedList.Clear();
 
-                SnTrace.Write(() => $"QueueThread: wait a bit.");
+                SnTrace.Write(() => $"SAQT: wait a bit.");
                 Task.Delay(1).Wait();
             }
             catch (Exception e)
@@ -220,16 +220,18 @@ public class ActivityQueue : IDisposable
             }
         }
 
-        SnTrace.Write("QueueThread: finished");
+        SnTrace.Write("SAQT: finished");
     }
     private async Task LoadLastActivities(int fromId, CancellationToken cancel)
     {
         var loaded = await _dataHandler.LoadLastActivities(fromId, cancel);
         foreach (var activity in loaded)
         {
-            SnTrace.Write(() => $"ActivityQueue: Arrive from database A{activity.Key}");
+            SnTrace.Write(() => $"SAQ: Arrive from database #SA{activity.Key}");
             _arrivalQueue.Enqueue(activity);
         }
+        // Unlock loading
+        _activityLoaderTask = null;
     }
 
     private IEnumerable<Activity> GetAllFromChains(List<Activity> roots)

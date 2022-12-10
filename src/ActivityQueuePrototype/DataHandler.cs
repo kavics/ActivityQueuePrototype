@@ -1,6 +1,4 @@
 ﻿using SenseNet.Diagnostics;
-using System.Diagnostics;
-using System.Threading.Channels;
 
 namespace ActivityQueuePrototype;
 
@@ -19,7 +17,7 @@ public class DataHandler
                 return;
             _activities.Add(activity);
         }
-        using var op = SnTrace.StartOperation(() => $"DataHandler: SaveActivity A{activity.Key}");
+        using var op = SnTrace.StartOperation(() => $"DataHandler: SaveActivity #SA{activity.Key}");
         await Task.Delay(Rng.Next(20, 50), cancel).ConfigureAwait(false);
         op.Successful = true;
     }

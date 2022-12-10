@@ -96,7 +96,7 @@ public class ActivityQueueTests
 
         // -------- random order with duplications
         foreach (var activity in new ActivityGenerator().GenerateDuplications(count,
-                     new RngConfig(0, 50), new RngConfig(10, 10)))
+                     new RngConfig(1, 1), new RngConfig(1, 1)))
         {
             tasks.Add(Task.Run(() => App.ExecuteActivity(activity, context, cancellation.Token)));
         }
@@ -300,9 +300,9 @@ public class ActivityQueueTests
         var allEntries = trace.Select(Entry.Parse);
         foreach (var entry in allEntries)
         {
-            // QueueThread: execution ignored immediately: A1-1
-            // QueueThread: execution finished: A1-1
-            // QueueThread: execution ignored (attachment): A1-1
+            // SAQT: execution ignored immediately: A1-1
+            // SAQT: execution finished: A1-1
+            // SAQT: execution ignored (attachment): A1-1
 
             if (ParseLine(allEvents, entry, "App: Business executes ", "Start", out var item))
                 item.BusinessStart = entry.Time - t0;
@@ -312,27 +312,27 @@ public class ActivityQueueTests
                 item.SaveStart = entry.Time - t0;
             else if (ParseLine(allEvents, entry, "DataHandler: SaveActivity ", "End", out item))
                 item.SaveEnd = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "ActivityQueue: Arrive from database ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQ: Arrive from database ", null, out item))
             {    item.Arrival = entry.Time - t0; item.FromDbOrReceiver = true; }
-            else if (ParseLine(allEvents, entry, "ActivityQueue: Arrive ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQ: Arrive ", null, out item))
                 item.Arrival = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "QueueThread: start execution: ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQT: start execution: ", null, out item))
                 item.Execution = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "Activity: ExecuteInternal ", "Start", out item))
+            else if (ParseLine(allEvents, entry, "SA: ExecuteInternal ", "Start", out item))
                 item.InternalExecutionStart = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "Activity: ExecuteInternal ", "End", out item))
+            else if (ParseLine(allEvents, entry, "SA: ExecuteInternal ", "End", out item))
                 item.InternalExecutionEnd = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "QueueThread: execution finished: ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQT: execution finished: ", null, out item))
                 item.Released = entry.Time - t0;
-            else if (ParseLine(allEvents, entry, "QueueThread: execution ignored immediately: ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQT: execution ignored immediately: ", null, out item))
             {   item.ExecutionIgnored = true; item.Released = entry.Time - t0; }
-            else if (ParseLine(allEvents, entry, "QueueThread: execution ignored (attachment): ", null, out item))
+            else if (ParseLine(allEvents, entry, "SAQT: execution ignored (attachment): ", null, out item))
             {   item.ExecutionIgnored = true; item.Released = entry.Time - t0; }
         }
 
         foreach (var entry in allEntries)
         {
-            if (ParseLine(allEvents, entry, "Activity: Make dependency: ", null, out var item))
+            if (ParseLine(allEvents, entry, "SA: Make dependency: ", null, out var item))
                 item.DependsFrom.Add(ParseDependsFrom(allEvents, entry.Message));
         }
 
@@ -420,11 +420,12 @@ public class ActivityQueueTests
         return null;
     }
 
+    private char[] _trimChars = "#SA".ToCharArray();
     private ActivityEvents ParseDependsFrom(Dictionary<string, ActivityEvents> allEvents, string msg)
     {
-        // Activity: Make dependency: A4-5 depends from 3-6.
+        // SA: Make dependency: #SA4-5 depends from SA3-6.
         var p = msg.IndexOf("depends from ", StringComparison.Ordinal);
-        var key = "A" + msg.Substring(p + 13).TrimStart('A').TrimEnd('.');
+        var key = "#SA" + msg.Substring(p + 13).TrimStart(_trimChars).TrimEnd('.');
         return allEvents[key];
     }
 
@@ -441,11 +442,8 @@ public class ActivityQueueTests
     }
     private string ParseItemId(string msg, int index)
     {
-        var p = index;
-        while (msg.Length > p && char.IsDigit(msg[p]))
-            p++;
         var src = msg.Substring(index);
-        p = src.IndexOf(" ");
+        var p = src.IndexOf(" ");
         if (p > 0)
             src = src.Substring(0, p);
         return src;
@@ -456,7 +454,7 @@ public class ActivityQueueTests
             return item;
         try
         {
-            var ids = key.Trim('A').Split('-').Select(int.Parse).ToArray();
+            var ids = key.Trim(_trimChars).Split('-').Select(int.Parse).ToArray();
             item = new ActivityEvents { Key = key, Id = ids[0], ObjectId = ids[1] };
         }
         catch (Exception e)
@@ -474,19 +472,19 @@ public class ActivityQueueTests
         public int ObjectId;
         public string Key;
         public bool FromDbOrReceiver;                     // 
-        public TimeSpan BusinessStart;                    // Start  App: Business executes A1
-        public TimeSpan SaveStart;                        // Start  DataHandler: SaveActivity A1
-        public TimeSpan SaveEnd;                          // End    DataHandler: SaveActivity A1
-        public TimeSpan Arrival;                          //        ActivityQueue: Arrive A1
-        public TimeSpan Execution;                        //        QueueThread: start execution: A1
-        public TimeSpan InternalExecutionStart;           // Start  Activity: ExecuteInternal A1
-        public TimeSpan InternalExecutionEnd;             // End    Activity: ExecuteInternal A1
-        public TimeSpan Released;                         // QueueThread: execution ignored immediately: A1-1
-                                                          // QueueThread: execution finished: A1-1
-                                                          // QueueThread: execution ignored (attachment): A1-1
-        public TimeSpan BusinessEnd;                      // End    App: Business executes A1
-        public bool ExecutionIgnored;                     //        QueueThread: execution ignored A3-1
-        public List<ActivityEvents> DependsFrom = new();  //        Activity: Make dependency: A4-5 depends from 3-6.
+        public TimeSpan BusinessStart;                    // Start  App: Business executes #SA1
+        public TimeSpan SaveStart;                        // Start  DataHandler: SaveActivity #SA1
+        public TimeSpan SaveEnd;                          // End    DataHandler: SaveActivity #SA1
+        public TimeSpan Arrival;                          //        SAQ: Arrive #SA1
+        public TimeSpan Execution;                        //        SAQT: start execution: #SA1
+        public TimeSpan InternalExecutionStart;           // Start  SA: ExecuteInternal #SA1
+        public TimeSpan InternalExecutionEnd;             // End    SA: ExecuteInternal #SA1
+        public TimeSpan Released;                         //        SAQT: execution ignored immediately: #SA1-1
+                                                          //        SAQT: execution finished: #SA1-1
+                                                          //        SAQT: execution ignored (attachment): #SA1-1
+        public TimeSpan BusinessEnd;                      // End    App: Business executes #SA1
+        public bool ExecutionIgnored;                     //        SAQT: execution ignored #SA3-1
+        public List<ActivityEvents> DependsFrom = new();  //        SA: Make dependency: #SA4-5 depends from SA3-6.
 
         public bool Saved => SaveStart != TimeSpan.Zero;
 

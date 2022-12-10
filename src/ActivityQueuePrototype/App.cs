@@ -72,7 +72,7 @@ public class App : IDisposable
     }
     public static async Task ExecuteActivity(Activity activity, Context context, CancellationToken cancel)
     {
-        using var op = SnTrace.StartOperation(() => $"App: Business executes A{activity.Key}");
+        using var op = SnTrace.StartOperation(() => $"App: Business executes #SA{activity.Key}");
         await activity.ExecuteAsync(context, cancel);
         op.Successful = true;
     }
