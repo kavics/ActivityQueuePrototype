@@ -58,7 +58,7 @@ public class App : IDisposable
         //    tasks.Add(Task.Run(() => ExecuteActivity2(activity, context, cancellation.Token)));
         //}
 
-        Task.WaitAll(tasks.ToArray());
+        await Task.WhenAll(tasks.ToArray());
 
         SnTrace.Write("App: wait for all activities finalization.");
         await Task.Delay(1_000).ConfigureAwait(false);
@@ -72,7 +72,12 @@ public class App : IDisposable
     }
     public static async Task ExecuteActivity(Activity activity, Context context, CancellationToken cancel)
     {
-        using var op = SnTrace.StartOperation(() => $"App: Business executes A{activity.Key}");
+        if (activity.FromReceiver)
+        {
+            await activity.ExecuteAsync(context, cancel);
+            return;
+        }
+        using var op = SnTrace.StartOperation(() => $"App: Business executes #SA{activity.Key}");
         await activity.ExecuteAsync(context, cancel);
         op.Successful = true;
     }

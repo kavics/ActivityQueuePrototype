@@ -14,11 +14,12 @@ public class Activity
     [field: NonSerialized, JsonIgnore] private Task _executionTask;
     [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
+    [field: NonSerialized, JsonIgnore] private Func<Activity, Activity, bool>? _checkDependencyCallback; // for prototype only
+
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromReceiver { get; set; }
 
-    //UNDONE: Missing methods: WaitFor, FinishWaiting, RemoveDependency, Attach, (detach and finish)
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> Attachments { get; private set; } = new List<Activity>();
@@ -28,13 +29,14 @@ public class Activity
     public int Id { get; set; }
     public string TypeName { get; }
 
-    public Activity(int id, int delay)
+    public Activity(int id, int delay, Func<Activity, Activity, bool>? checkDependencyCallback = null)
     {
         Interlocked.Increment(ref _objectId);
         Key = $"{id}-{_objectId}";
         Id = id;
         _delay = delay;
         TypeName = GetType().Name;
+        _checkDependencyCallback = checkDependencyCallback;
     }
 
     internal Task CreateTaskForWait()
@@ -49,10 +51,12 @@ public class Activity
     }
     internal void StartFinalizationTask()
     {
-        _finalizationTask.Start();
+        _finalizationTask?.Start();
     }
 
     internal TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
+
+    internal bool ShouldWaitFor(Activity olderActivity) => _checkDependencyCallback?.Invoke(this, olderActivity) ?? false;
 
     public Task ExecuteAsync(Context context, CancellationToken cancel)
     {
@@ -62,8 +66,34 @@ public class Activity
 
     internal void ExecuteInternal()
     {
-        using var op = SnTrace.StartOperation(() => $"Activity: ExecuteInternal A{Key} (delay: {_delay})");
+        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
         Task.Delay(_delay).GetAwaiter().GetResult();
         op.Successful = true;
+    }
+
+    public void WaitFor(Activity olderActivity)
+    {
+        SnTrace.Write(() => $"SA: Make dependency: #SA{Key} depends from SA{olderActivity.Key}.");
+        // this method should called from thread safe block.
+        if (WaitingFor.All(x => x.Id != olderActivity.Id))
+            WaitingFor.Add(olderActivity);
+        if (olderActivity.WaitingForMe.All(x => x.Id != Id))
+            olderActivity.WaitingForMe.Add(this);
+    }
+    public void FinishWaiting(Activity finishedActivity)
+    {
+        // this method must called from thread safe block.
+        RemoveDependency(WaitingFor, finishedActivity);
+        RemoveDependency(finishedActivity.WaitingForMe, this);
+    }
+    private void RemoveDependency(List<Activity> dependencyList, Activity activity)
+    {
+        // this method must called from thread safe block.
+        dependencyList.RemoveAll(x => x.Id == activity.Id);
+    }
+
+    public Activity Clone()
+    {
+        return new Activity(Id, _delay, _checkDependencyCallback);
     }
 }
