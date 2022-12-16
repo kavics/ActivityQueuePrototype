@@ -292,6 +292,72 @@ public class ActivityQueueTests
         Assert.AreEqual(null, msg);
     }
 
+    [TestMethod]
+    public async Task AQ_Activities_Net_Dependencies_ParallelsAndChainsAndAttachments()
+    {
+        var dataHandler = new DataHandler { EnableLoad = false };
+        var activityQueue = new ActivityQueue(dataHandler);
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+
+        var tasks = new List<Task>();
+        SnTrace.Write("App: activity generator started.");
+
+        // 8 activities but 1 dependency chain
+        var ids = new[] { 8, 7, 6, 5, 4, 3, 2, 8, 7, 6, 5, 4, 3, 2, 1 };
+        var index = 0;
+        foreach (var activity in new ActivityGenerator().GenerateByIds(ids,
+                     new RngConfig(1, 1), new RngConfig(50, 50),
+                     (newer, older) => newer.Id >= 4 && newer.Id <= 6 && older.Id == newer.Id - 1))
+        {
+            activity.FromReceiver = index++ % 2 != 0;
+            tasks.Add(Task.Run(() => App.ExecuteActivity(activity, context, cancellation.Token)));
+        }
+
+        Task.WaitAll(tasks.ToArray());
+
+        SnTrace.Write("App: wait for all activities finalization.");
+        await Task.Delay(1000).ConfigureAwait(false);
+        SnTrace.Write("App: finished.");
+
+        var trace = _testTracer.Lines;
+        var msg = CheckTrace(trace, 8);
+        Assert.AreEqual(null, msg);
+    }
+
+    [TestMethod]
+    public async Task AQ_Activities_DbNet_Dependencies_ParallelsAndChainsAndAttachments()
+    {
+        var dataHandler = new DataHandler();
+        var activityQueue = new ActivityQueue(dataHandler);
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+
+        var tasks = new List<Task>();
+        SnTrace.Write("App: activity generator started.");
+
+        // 8 activities but 1 dependency chain
+        var ids = new[] { 8, 7, 6, 5, 4, 3, 2, 8, 7, 6, 5, 4, 3, 2, 1 };
+        var index = 0;
+        foreach (var activity in new ActivityGenerator().GenerateByIds(ids,
+                     new RngConfig(1, 1), new RngConfig(50, 50),
+                     (newer, older) => newer.Id >= 4 && newer.Id <= 6 && older.Id == newer.Id - 1))
+        {
+            activity.FromReceiver = index++ % 2 != 0;
+            tasks.Add(Task.Run(() => App.ExecuteActivity(activity, context, cancellation.Token)));
+        }
+
+        Task.WaitAll(tasks.ToArray());
+
+        SnTrace.Write("App: wait for all activities finalization.");
+        await Task.Delay(1000).ConfigureAwait(false);
+        SnTrace.Write("App: finished.");
+
+        var trace = _testTracer.Lines;
+        var msg = CheckTrace(trace, 8);
+        Assert.AreEqual(null, msg);
+    }
+
     private string CheckTrace(List<string> trace, int count)
     {
         var t0 = Entry.Parse(trace.First()).Time;
@@ -312,8 +378,10 @@ public class ActivityQueueTests
                 item.SaveStart = entry.Time - t0;
             else if (ParseLine(allEvents, entry, "DataHandler: SaveActivity ", "End", out item))
                 item.SaveEnd = entry.Time - t0;
+            else if (ParseLine(allEvents, entry, "SAQ: Arrive from receiver ", null, out item))
+            { item.Arrival = entry.Time - t0; item.FromDbOrReceiver = true; }
             else if (ParseLine(allEvents, entry, "SAQ: Arrive from database ", null, out item))
-            {    item.Arrival = entry.Time - t0; item.FromDbOrReceiver = true; }
+            { item.Arrival = entry.Time - t0; item.FromDbOrReceiver = true; }
             else if (ParseLine(allEvents, entry, "SAQ: Arrive ", null, out item))
                 item.Arrival = entry.Time - t0;
             else if (ParseLine(allEvents, entry, "SAQT: start execution: ", null, out item))

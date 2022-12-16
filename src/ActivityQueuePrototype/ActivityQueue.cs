@@ -29,6 +29,11 @@ public class ActivityQueue : IDisposable
         SnTrace.Write("SAQ: disposed");
     }
 
+    public Task StartAsync(object memoryState, CancellationToken cancel)
+    {
+        //UNDONE: Load state from DB. Load not executed activities (before gaps after range) and execute them (with partitions).
+        return Task.CompletedTask;
+    }
 
     // Activity arrival
     public Task ExecuteAsync(Activity activity, CancellationToken cancel)
@@ -36,9 +41,13 @@ public class ActivityQueue : IDisposable
         if (!activity.FromDatabase && !activity.FromReceiver)
             _dataHandler.SaveActivityAsync(activity, cancel).GetAwaiter().GetResult();
 
-        SnTrace.Write(() => $"SAQ: Arrive #SA{activity.Key}");
+        if(activity.FromReceiver)
+            SnTrace.Write(() => $"SAQ: Arrive from receiver #SA{activity.Key}");
+        else
+            SnTrace.Write(() => $"SAQ: Arrive #SA{activity.Key}");
+
         _arrivalQueue.Enqueue(activity);
-        _waitToWorkSignal.Set();
+        _waitToWorkSignal.Set(); //UNDONE: This instruction should replaced to other places (timer?).
 
         return activity.CreateTaskForWait();
     }
@@ -144,11 +153,9 @@ public class ActivityQueue : IDisposable
                 }
 
                 // Enumerate parallel-executable activities. Dependencies are attached or chained.
+                // (activity.WaitingFor.Count == 0)
                 foreach (var activity in _executingList)
                 {
-                    if (activity.WaitingFor.Count > 0) //UNDONE: ??
-                        continue;
-
                     switch (activity.GetExecutionTaskStatus())
                     {
                         // pending
@@ -201,7 +208,6 @@ public class ActivityQueue : IDisposable
                     }
 
                     _waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
-
                 }
 
                 finishedList.Clear();
