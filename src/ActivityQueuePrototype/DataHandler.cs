@@ -2,6 +2,21 @@
 
 namespace ActivityQueuePrototype;
 
+/// <summary>
+/// Contains information about the executed activities and last activity id in the database.
+/// </summary>
+public class LoadCompletionStateResult
+{
+    /// <summary>
+    /// Gets or sets the current CompletionState containing information about the executed activities.
+    /// </summary>
+    public CompletionState CompletionState { get; set; }
+    /// <summary>
+    /// Gets or sets the last executed activity id in the database.
+    /// </summary>
+    public int LastDatabaseId { get; set; }
+}
+
 public class DataHandler
 {
     public bool EnableLoad { get; set; } = true;
@@ -42,4 +57,12 @@ public class DataHandler
         op.Successful = true;
         return result;
     }
+
+    internal Task<LoadCompletionStateResult> LoadCompletionStateAsync(CancellationToken cancel)
+    {
+        //UNDONE: LoadCompletionStateAsync is not implemented;
+        var result = new LoadCompletionStateResult {CompletionState = new CompletionState(), LastDatabaseId = 0};
+        return Task.FromResult(result);
+    }
+
 }

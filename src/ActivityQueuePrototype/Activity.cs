@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using Newtonsoft.Json;
 using SenseNet.Diagnostics;
 
@@ -15,6 +16,7 @@ public class Activity
     [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
     [field: NonSerialized, JsonIgnore] private Func<Activity, Activity, bool>? _checkDependencyCallback; // for prototype only
+    [field: NonSerialized, JsonIgnore] private Action<Activity>? _executionCallback; // for prototype only
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
@@ -28,8 +30,11 @@ public class Activity
 
     public int Id { get; set; }
     public string TypeName { get; }
+    public Exception? ExecutionException { get; private set; }
 
-    public Activity(int id, int delay, Func<Activity, Activity, bool>? checkDependencyCallback = null)
+    public Activity(int id, int delay,
+        Func<Activity, Activity, bool>? checkDependencyCallback = null,
+        Action<Activity> executionCallback = null)
     {
         Interlocked.Increment(ref _objectId);
         Key = $"{id}-{_objectId}";
@@ -37,6 +42,7 @@ public class Activity
         _delay = delay;
         TypeName = GetType().Name;
         _checkDependencyCallback = checkDependencyCallback;
+        _executionCallback = executionCallback;
     }
 
     internal Task CreateTaskForWait()
@@ -66,9 +72,26 @@ public class Activity
 
     internal void ExecuteInternal()
     {
-        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
-        Task.Delay(_delay).GetAwaiter().GetResult();
-        op.Successful = true;
+        try
+        {
+            using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
+            if (_executionCallback != null)
+            {
+                _executionCallback(this);
+                op.Successful = true;
+                return;
+            }
+
+            Task.Delay(_delay).GetAwaiter().GetResult();
+            op.Successful = true;
+        }
+        catch (Exception e)
+        {
+            ExecutionException = e;
+
+            // we log this here, because if the activity is not waited for later than the exception would not be logged
+            SnTrace.WriteError(() => $"Error during security activity execution. SA{Id} {e}");
+        }
     }
 
     public void WaitFor(Activity olderActivity)

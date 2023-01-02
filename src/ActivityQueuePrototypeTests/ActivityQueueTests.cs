@@ -55,6 +55,8 @@ public class ActivityQueueTests
         SnTrace.Write(() => "Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -88,6 +90,8 @@ public class ActivityQueueTests
         SnTrace.Write("Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -117,6 +121,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -146,6 +152,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -175,6 +183,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -205,6 +215,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -235,6 +247,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -266,6 +280,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler();
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -297,6 +313,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler { EnableLoad = false };
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -330,6 +348,8 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler();
         var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
@@ -357,6 +377,63 @@ public class ActivityQueueTests
         var msg = CheckTrace(trace, 8);
         Assert.AreEqual(null, msg);
     }
+
+    [TestMethod]
+    public async Task AQ_Gaps_Start()
+    {
+        var dataHandler = new DataHandler();
+        var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(new CompletionState{LastActivityId = 10, Gaps = new []{4, 6, 7}}, 15,
+            CancellationToken.None);
+
+        // ACTION
+        var state = activityQueue.GetCompletionState();
+
+        // ASSERT
+        Assert.AreEqual("10(4,6,7)", state.ToString());
+    }
+    [TestMethod]
+    public async Task AQ_Gaps_Loaded()
+    {
+        var dataHandler = new DataHandler();
+        var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(new CompletionState { LastActivityId = 10, Gaps = new[] { 4, 6, 7 } }, 15,
+            CancellationToken.None);
+
+        // ACTION
+        var state = activityQueue.GetCompletionState();
+
+        // ASSERT
+        Assert.AreEqual("15()", state.ToString());
+    }
+    [TestMethod]
+    public async Task AQ_Gaps_Working()
+    {
+        void ExecutionCallback(Activity obj) { throw new NotImplementedException(); }
+
+        var dataHandler = new DataHandler();
+        var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+
+        await App.ExecuteActivity(new Activity(1, 0), context, CancellationToken.None);
+        await Task.Delay(1);
+        var state = activityQueue.GetCompletionState();
+        Assert.AreEqual("1()", state.ToString());
+        
+        await App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, CancellationToken.None);
+        await Task.Delay(1);
+        state = activityQueue.GetCompletionState();
+        Assert.AreEqual("1()", state.ToString());
+
+        await App.ExecuteActivity(new Activity(3, 0), context, CancellationToken.None);
+        await Task.Delay(1);
+        state = activityQueue.GetCompletionState();
+        Assert.AreEqual("3(2)", state.ToString());
+    }
+
 
     private string CheckTrace(List<string> trace, int count)
     {
