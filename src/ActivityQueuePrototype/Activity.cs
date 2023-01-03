@@ -19,8 +19,18 @@ public class Activity
     [field: NonSerialized, JsonIgnore] private Action<Activity>? _executionCallback; // for prototype only
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity is loaded from the database.
+    /// </summary>
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity comes from the message receiver.
+    /// </summary>
     [field: NonSerialized, JsonIgnore] public bool FromReceiver { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity is loaded from the database at the system start.
+    /// </summary>
+    [field: NonSerialized, JsonIgnore] public bool IsUnprocessedActivity { get; set; }
 
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();

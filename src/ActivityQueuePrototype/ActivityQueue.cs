@@ -70,7 +70,7 @@ public class ActivityQueue : IDisposable
         var dbState = await _dataHandler.LoadCompletionStateAsync(cancel);
         await StartAsync(dbState.CompletionState, dbState.LastDatabaseId, cancel);
     }
-    public Task StartAsync(CompletionState uncompleted, int lastDatabaseId, CancellationToken cancel)
+    public async Task StartAsync(CompletionState uncompleted, int lastDatabaseId, CancellationToken cancel)
     {
         _lastExecutedId = uncompleted.LastActivityId;
         _gaps.Clear();
@@ -78,15 +78,42 @@ public class ActivityQueue : IDisposable
             _gaps.AddRange(uncompleted.Gaps);
         _completionState = new CompletionState { LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray() };
 
-        //UNDONE: Load not executed activities (before gaps after range) and execute them (with partitions).
-
         // Start worker thread
         _activityQueueControllerThreadCancellation = new CancellationTokenSource();
         _activityQueueThreadController = Task.Factory.StartNew(
             () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
             _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-        return Task.CompletedTask;
+        await ExecuteUnprocessedActivitiesAtStartAsync(_lastExecutedId, _gaps, lastDatabaseId, cancel);
+    }
+    private async Task ExecuteUnprocessedActivitiesAtStartAsync(int lastExecutedId, List<int> gaps, int lastDatabaseId, CancellationToken cancel)
+    {
+        //UNDONE: Load not executed activities (before gaps after range) and execute them (with partitions).
+        //throw new NotImplementedException();
+
+        var count = 0;
+        if (gaps.Any())
+        {
+            var loadedActivities = new SecurityActivityLoader(gaps, true, _dataHandler);
+            foreach (var loadedActivity in loadedActivities)
+            {
+                SnTrace.SecurityQueue.Write("SAQ: Startup: activity arrived from db: SA{0}.", loadedActivity.Id);
+                _arrivalQueue.Enqueue(loadedActivity);
+                _waitToWorkSignal.Set();
+                count++;
+            }
+        }
+        if (lastExecutedId < lastDatabaseId)
+        {
+            var loadedActivities = new SecurityActivityLoader(lastExecutedId + 1, lastDatabaseId, true, _dataHandler);
+            foreach (var loadedActivity in loadedActivities)
+            {
+                SnTrace.SecurityQueue.Write("SAQ: Startup: activity arrived from db: SA{0}.", loadedActivity.Id);
+                _arrivalQueue.Enqueue(loadedActivity);
+                _waitToWorkSignal.Set();
+                count++;
+            }
+        }
     }
 
     // Activity arrival
@@ -126,7 +153,7 @@ public class ActivityQueue : IDisposable
     {
         SnTrace.Write("SAQT: started");
         var finishedList = new List<Activity>(); // temporary
-        var lastStartedId = 0;
+        var lastStartedId = _lastExecutedId;
 
         while (true)
         {
@@ -163,10 +190,12 @@ public class ActivityQueue : IDisposable
 
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
+                // If the current activity is "unprocessed" (startup mode), it needs to process instantly and
+                //   skip not-loaded activities because the activity may process a gap.
                 while (_waitingList.Count > 0)
                 {
                     var activityToExecute = _waitingList[0];
-                    if (activityToExecute.Id <= lastStartedId) // already arrived or executed
+                    if (!activityToExecute.IsUnprocessedActivity && activityToExecute.Id <= lastStartedId) // already arrived or executed
                     {
                         _waitingList.RemoveAt(0);
                         var existing = GetAllFromChains(_executingList)
@@ -184,8 +213,9 @@ public class ActivityQueue : IDisposable
                             activityToExecute.StartFinalizationTask();
                         }
                     }
-                    else if (activityToExecute.Id == lastStartedId + 1) // arrived in order
+                    else if (activityToExecute.IsUnprocessedActivity || activityToExecute.Id == lastStartedId + 1) // arrived in order
                     {
+
                         _waitingList.RemoveAt(0);
 
                         // Discover dependencies

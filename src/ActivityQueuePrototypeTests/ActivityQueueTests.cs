@@ -43,6 +43,11 @@ public class ActivityQueueTests
         SnTrace.Custom.Enabled = true;
         SnTrace.Write("------------------------------------------------- " + TestContext.TestName);
     }
+    [TestCleanup]
+    public void CleanupTest()
+    {
+        SnTrace.Flush();
+    }
 
 
     [DataRow(1)]
@@ -397,17 +402,21 @@ public class ActivityQueueTests
     {
         var dataHandler = new DataHandler();
         var activityQueue = new ActivityQueue(dataHandler);
-        await activityQueue.StartAsync(new CompletionState { LastActivityId = 10, Gaps = new[] { 4, 6, 7 } }, 15,
-            CancellationToken.None);
+        await Task.WhenAll(Enumerable.Range(1, 15)
+            .Select(i => dataHandler.SaveActivityAsync(new Activity(1, 10), CancellationToken.None))
+        );
 
         // ACTION
-        var state = activityQueue.GetCompletionState();
+        await activityQueue.StartAsync(new CompletionState { LastActivityId = 10, Gaps = new[] { 4, 6, 7 } }, 15,
+            CancellationToken.None);
+        await Task.Delay(100);
 
         // ASSERT
+        var state = activityQueue.GetCompletionState();
         Assert.AreEqual("15()", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Working()
+    public async Task AQ_Gaps_Working_123()
     {
         void ExecutionCallback(Activity obj) { throw new NotImplementedException(); }
 
@@ -431,6 +440,30 @@ public class ActivityQueueTests
         await App.ExecuteActivity(new Activity(3, 0), context, CancellationToken.None);
         await Task.Delay(1);
         state = activityQueue.GetCompletionState();
+        Assert.AreEqual("3(2)", state.ToString());
+    }
+    [TestMethod]
+    public async Task AQ_Gaps_Working_132()
+    {
+        void ExecutionCallback(Activity obj) { throw new NotSupportedException(); }
+
+        var dataHandler = new DataHandler() {EnableLoad = false};
+        var activityQueue = new ActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+        var cancel = cancellation.Token;
+
+        var tasks = new[]
+        {
+            App.ExecuteActivity(new Activity(1, 0), context, cancel),
+            App.ExecuteActivity(new Activity(3, 0), context, cancel),
+            App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, cancel)
+        };
+        await Task.WhenAll(tasks);
+        await Task.Delay(100, cancel);
+        var state = activityQueue.GetCompletionState();
         Assert.AreEqual("3(2)", state.ToString());
     }
 
