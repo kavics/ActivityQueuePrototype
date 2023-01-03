@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading.Channels;
 using SenseNet.Diagnostics;
 
 namespace ActivityQueuePrototype;
@@ -88,9 +89,6 @@ public class ActivityQueue : IDisposable
     }
     private async Task ExecuteUnprocessedActivitiesAtStartAsync(int lastExecutedId, List<int> gaps, int lastDatabaseId, CancellationToken cancel)
     {
-        //UNDONE: Load not executed activities (before gaps after range) and execute them (with partitions).
-        //throw new NotImplementedException();
-
         var count = 0;
         if (gaps.Any())
         {
@@ -178,15 +176,7 @@ public class ActivityQueue : IDisposable
                                            $"_arrivalQueue.Count: {_arrivalQueue.Count}), " +
                                            $"_executingList.Count: {_executingList.Count}");
 
-                // Move arrived items to the waiting list
-                while (_arrivalQueue.Count > 0)
-                {
-                    if (_arrivalQueue.TryDequeue(out var arrivedActivity))
-                        _waitingList.Add(arrivedActivity);
-                }
-
-                _waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
-                SnTrace.Write(() => $"SAQT: _arrivalSortedList.Count: {_waitingList.Count}");
+                LineUpArrivedActivities(_arrivalQueue, _waitingList);
 
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
@@ -197,116 +187,28 @@ public class ActivityQueue : IDisposable
                     var activityToExecute = _waitingList[0];
                     if (!activityToExecute.IsUnprocessedActivity && activityToExecute.Id <= lastStartedId) // already arrived or executed
                     {
-                        _waitingList.RemoveAt(0);
-                        var existing = GetAllFromChains(_executingList)
-                            .FirstOrDefault(x => x.Id == activityToExecute.Id);
-                        if (existing != null)
-                        {
-                            SnTrace.Write(() => $"SAQT: activity attached to another one: " +
-                                                $"#SA{activityToExecute.Key} -> SA{existing.Key}");
-                            existing.Attachments.Add(activityToExecute);
-                        }
-                        else
-                        {
-                            SnTrace.Write(() =>
-                                $"SAQT: execution ignored immediately: #SA{activityToExecute.Key}");
-                            activityToExecute.StartFinalizationTask();
-                        }
+                        AttachOrIgnore(activityToExecute, _waitingList, _executingList);
                     }
                     else if (activityToExecute.IsUnprocessedActivity || activityToExecute.Id == lastStartedId + 1) // arrived in order
                     {
-
-                        _waitingList.RemoveAt(0);
-
-                        // Discover dependencies
-                        foreach (var activityUnderExecution in GetAllFromChains(_executingList))
-                            if (activityToExecute.ShouldWaitFor(activityUnderExecution))
-                                activityToExecute.WaitFor(activityUnderExecution);
-
-                        // Add to concurrently executable list
-                        if (activityToExecute.WaitingFor.Count == 0)
-                        {
-                            SnTrace.Write(() => $"SAQT: moved to executing list: #SA{activityToExecute.Key}");
-                            _executingList.Add(activityToExecute);
-                        }
-
-                        // Mark as started even if it is waiting.
-                        lastStartedId = activityToExecute.Id;
+                        lastStartedId = ExecuteOrChain(activityToExecute, _waitingList, _executingList);
                     }
                     else
                     {
-                        // Load from database async
-                        if (_activityLoaderTask == null)
-                        {
-                            var id = lastStartedId;
-                            _activityLoaderTask = Task.Run(() => LoadLastActivities(id + 1, cancel));
-                        }
-
-                        break;
+                        // Load the missed out activities from database or skip this if it is happening right now.
+                        _activityLoaderTask ??= Task.Run(() => LoadLastActivities(lastStartedId + 1, cancel));
+                        break; //UNDONE: are you sure to exit here?
                     }
                 }
 
                 // Enumerate parallel-executable activities. Dependencies are attached or chained.
                 // (activity.WaitingFor.Count == 0)
-                foreach (var activity in _executingList)
-                {
-                    switch (activity.GetExecutionTaskStatus())
-                    {
-                        // pending
-                        case TaskStatus.Created:
-                        case TaskStatus.WaitingForActivation:
-                        case TaskStatus.WaitingToRun:
-                            SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
-                            activity.StartExecutionTask();
-                            break;
+                SuperviseExecutions(_executingList, finishedList); // manage pending, execution and finished states
 
-                        // executing
-                        case TaskStatus.Running:
-                        case TaskStatus.WaitingForChildrenToComplete:
-                            // do nothing?
-                            break;
+                // Releases starter threads with attachments and activates dependent items
+                ManageFinishedActivities(finishedList, _executingList);
 
-                        // finished
-                        case TaskStatus.RanToCompletion:
-                        case TaskStatus.Canceled:
-                        case TaskStatus.Faulted:
-                            finishedList.Add(activity);
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-                }
-
-                foreach (var finishedActivity in finishedList)
-                {
-                    SnTrace.Write(() => $"SAQT: execution finished: #SA{finishedActivity.Key}");
-                    //UNDONE: memorize activity in the ActivityHistory.
-                    finishedActivity.StartFinalizationTask();
-                    _executingList.Remove(finishedActivity);
-                    FinishActivity(finishedActivity);
-
-                    foreach (var attachment in finishedActivity.Attachments)
-                    {
-                        SnTrace.Write(() => $"SAQT: execution ignored (attachment): #SA{attachment.Key}");
-                        attachment.StartFinalizationTask();
-                    }
-
-                    finishedActivity.Attachments.Clear();
-
-                    // Handle dependencies: start completely freed dependent activities by adding them to executing-list.
-                    foreach (var dependentActivity in finishedActivity.WaitingForMe.ToArray())
-                    {
-                        SnTrace.Write(() => $"SAQT: activate dependent: #SA{dependentActivity.Key}");
-                        dependentActivity.FinishWaiting(finishedActivity);
-                        if (dependentActivity.WaitingFor.Count == 0)
-                            _executingList.Add(dependentActivity);
-                    }
-
-                    _waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
-                }
-
-                finishedList.Clear();
-
+                // End of cycle
                 SnTrace.Write(() => $"SAQT: wait a bit.");
                 Task.Delay(1).Wait();
             }
@@ -322,6 +224,127 @@ public class ActivityQueue : IDisposable
         }
 
         SnTrace.Write("SAQT: finished");
+    }
+    private void LineUpArrivedActivities(ConcurrentQueue<Activity> arrivalQueue, List<Activity> waitingList)
+    {
+        // Move arrived items to the waiting list
+        while (arrivalQueue.Count > 0)
+        {
+            if (arrivalQueue.TryDequeue(out var arrivedActivity))
+                waitingList.Add(arrivedActivity);
+        }
+
+        waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
+        SnTrace.Write(() => $"SAQT: arrivalSortedList.Count: {waitingList.Count}");
+    }
+    private void AttachOrIgnore(Activity activity, List<Activity> waitingList, List<Activity> executingList)
+    {
+        waitingList.RemoveAt(0);
+        var existing = GetAllFromChains(executingList)
+            .FirstOrDefault(x => x.Id == activity.Id);
+        if (existing != null)
+        {
+            SnTrace.Write(() => $"SAQT: activity attached to another one: " +
+                                $"#SA{activity.Key} -> SA{existing.Key}");
+            existing.Attachments.Add(activity);
+        }
+        else
+        {
+            SnTrace.Write(() =>
+                $"SAQT: execution ignored immediately: #SA{activity.Key}");
+            activity.StartFinalizationTask();
+        }
+    }
+    private int ExecuteOrChain(Activity activity, List<Activity> waitingList, List<Activity> executingList)
+    {
+        waitingList.RemoveAt(0);
+
+        // Discover dependencies
+        foreach (var activityUnderExecution in GetAllFromChains(executingList))
+            if (activity.ShouldWaitFor(activityUnderExecution))
+                activity.WaitFor(activityUnderExecution);
+
+        // Add to concurrently executable list
+        if (activity.WaitingFor.Count == 0)
+        {
+            SnTrace.Write(() => $"SAQT: moved to executing list: #SA{activity.Key}");
+            executingList.Add(activity);
+        }
+
+        // Mark as started even if it is waiting.
+        return activity.Id;
+    }
+    private async Task LoadLastActivities(int fromId, CancellationToken cancel)
+    {
+        var loaded = await _dataHandler.LoadLastActivities(fromId, cancel);
+        foreach (var activity in loaded)
+        {
+            SnTrace.Write(() => $"SAQ: Arrive from database #SA{activity.Key}");
+            _arrivalQueue.Enqueue(activity);
+        }
+        // Unlock loading
+        _activityLoaderTask = null;
+    }
+    private void SuperviseExecutions(List<Activity> executingList, List<Activity> finishedList)
+    {
+        foreach (var activity in executingList)
+        {
+            switch (activity.GetExecutionTaskStatus())
+            {
+                // pending
+                case TaskStatus.Created:
+                case TaskStatus.WaitingForActivation:
+                case TaskStatus.WaitingToRun:
+                    SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
+                    activity.StartExecutionTask();
+                    break;
+
+                // executing
+                case TaskStatus.Running:
+                case TaskStatus.WaitingForChildrenToComplete:
+                    // do nothing?
+                    break;
+
+                // finished
+                case TaskStatus.RanToCompletion:
+                case TaskStatus.Canceled:
+                case TaskStatus.Faulted:
+                    finishedList.Add(activity);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+    }
+    private void ManageFinishedActivities(List<Activity> finishedList, List<Activity> executingList)
+    {
+        foreach (var finishedActivity in finishedList)
+        {
+            SnTrace.Write(() => $"SAQT: execution finished: #SA{finishedActivity.Key}");
+            //UNDONE: memorize activity in the ActivityHistory.
+            finishedActivity.StartFinalizationTask();
+            executingList.Remove(finishedActivity);
+            FinishActivity(finishedActivity);
+
+            foreach (var attachment in finishedActivity.Attachments)
+            {
+                SnTrace.Write(() => $"SAQT: execution ignored (attachment): #SA{attachment.Key}");
+                attachment.StartFinalizationTask();
+            }
+
+            finishedActivity.Attachments.Clear();
+
+            // Handle dependencies: start completely freed dependent activities by adding them to executing-list.
+            foreach (var dependentActivity in finishedActivity.WaitingForMe.ToArray())
+            {
+                SnTrace.Write(() => $"SAQT: activate dependent: #SA{dependentActivity.Key}");
+                dependentActivity.FinishWaiting(finishedActivity);
+                if (dependentActivity.WaitingFor.Count == 0)
+                    executingList.Add(dependentActivity);
+            }
+        }
+
+        finishedList.Clear();
     }
     private void FinishActivity(Activity activity)
     {
@@ -341,17 +364,6 @@ public class ActivityQueue : IDisposable
             _completionState = new CompletionState {LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray()};
             SnTrace.Write(() => $"SAQT: State after finishing SA{id}: {_completionState}");
         }
-    }
-    private async Task LoadLastActivities(int fromId, CancellationToken cancel)
-    {
-        var loaded = await _dataHandler.LoadLastActivities(fromId, cancel);
-        foreach (var activity in loaded)
-        {
-            SnTrace.Write(() => $"SAQ: Arrive from database #SA{activity.Key}");
-            _arrivalQueue.Enqueue(activity);
-        }
-        // Unlock loading
-        _activityLoaderTask = null;
     }
 
     private IEnumerable<Activity> GetAllFromChains(List<Activity> roots)
