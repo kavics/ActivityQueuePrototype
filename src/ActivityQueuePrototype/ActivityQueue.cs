@@ -4,19 +4,49 @@ using SenseNet.Diagnostics;
 
 namespace ActivityQueuePrototype;
 
+/// <summary>
+/// Contains information about the executed activities.
+/// </summary>
+public class CompletionState
+{
+    /// <summary>
+    /// Id of the last executed activity.
+    /// </summary>
+    public int LastActivityId { get; set; }
+
+    /// <summary>
+    /// Contains activity ids that are not executed yet and are lower than the LastActivityId.
+    /// </summary>
+    public int[] Gaps { get; set; } = Array.Empty<int>();
+
+    /// <summary>
+    /// Returns a string that represents the current object.
+    /// </summary>
+    public override string ToString()
+    {
+        return $"{LastActivityId}({GapsToString(Gaps, 50, 10)})";
+    }
+
+    internal string GapsToString(int[] gaps, int maxCount, int growth)
+    {
+        if (gaps.Length < maxCount + growth)
+            maxCount = gaps.Length;
+        return gaps.Length > maxCount
+            ? $"{string.Join(",", gaps.Take(maxCount))},... and {gaps.Length - maxCount} additional items"
+            : string.Join(",", gaps);
+    }
+}
+
+
 public class ActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
-    private readonly CancellationTokenSource _activityQueueControllerThreadCancellation;
-    private readonly Task _activityQueueThreadController;
+    private CancellationTokenSource _activityQueueControllerThreadCancellation;
+    private Task _activityQueueThreadController;
 
     public ActivityQueue(DataHandler dataHandler)
     {
         _dataHandler = dataHandler;
-        _activityQueueControllerThreadCancellation = new CancellationTokenSource();
-        _activityQueueThreadController = Task.Factory.StartNew(
-            () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
-            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     public void Dispose()
@@ -26,13 +56,64 @@ public class ActivityQueue : IDisposable
         Task.Delay(100).GetAwaiter().GetResult();
         _activityQueueThreadController.Dispose();
         _activityQueueControllerThreadCancellation.Dispose();
+
+        //UNDONE: remove comment if the cleaning CompletionState is required when disposing the ActivityQueue
+        //_lastExecutedId = 0;
+        //_gaps.Clear();
+        //_completionState = new CompletionState();
+
         SnTrace.Write("SAQ: disposed");
     }
 
-    public Task StartAsync(object memoryState, CancellationToken cancel)
+    public async Task StartAsync(CancellationToken cancel)
     {
-        //UNDONE: Load state from DB. Load not executed activities (before gaps after range) and execute them (with partitions).
-        return Task.CompletedTask;
+        var dbState = await _dataHandler.LoadCompletionStateAsync(cancel);
+        await StartAsync(dbState.CompletionState, dbState.LastDatabaseId, cancel);
+    }
+    public async Task StartAsync(CompletionState uncompleted, int lastDatabaseId, CancellationToken cancel)
+    {
+        _lastExecutedId = uncompleted.LastActivityId;
+        _gaps.Clear();
+        if(uncompleted.Gaps != null)
+            _gaps.AddRange(uncompleted.Gaps);
+        _completionState = new CompletionState { LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray() };
+
+        // Start worker thread
+        _activityQueueControllerThreadCancellation = new CancellationTokenSource();
+        _activityQueueThreadController = Task.Factory.StartNew(
+            () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
+            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+        await ExecuteUnprocessedActivitiesAtStartAsync(_lastExecutedId, _gaps, lastDatabaseId, cancel);
+    }
+    private async Task ExecuteUnprocessedActivitiesAtStartAsync(int lastExecutedId, List<int> gaps, int lastDatabaseId, CancellationToken cancel)
+    {
+        //UNDONE: Load not executed activities (before gaps after range) and execute them (with partitions).
+        //throw new NotImplementedException();
+
+        var count = 0;
+        if (gaps.Any())
+        {
+            var loadedActivities = new SecurityActivityLoader(gaps, true, _dataHandler);
+            foreach (var loadedActivity in loadedActivities)
+            {
+                SnTrace.SecurityQueue.Write("SAQ: Startup: activity arrived from db: SA{0}.", loadedActivity.Id);
+                _arrivalQueue.Enqueue(loadedActivity);
+                _waitToWorkSignal.Set();
+                count++;
+            }
+        }
+        if (lastExecutedId < lastDatabaseId)
+        {
+            var loadedActivities = new SecurityActivityLoader(lastExecutedId + 1, lastDatabaseId, true, _dataHandler);
+            foreach (var loadedActivity in loadedActivities)
+            {
+                SnTrace.SecurityQueue.Write("SAQ: Startup: activity arrived from db: SA{0}.", loadedActivity.Id);
+                _arrivalQueue.Enqueue(loadedActivity);
+                _waitToWorkSignal.Set();
+                count++;
+            }
+        }
     }
 
     // Activity arrival
@@ -58,11 +139,21 @@ public class ActivityQueue : IDisposable
     private readonly List<Activity> _executingList = new();
     private Task? _activityLoaderTask;
     private long _workCycle = 0;
+
+    private int _lastExecutedId;
+    private List<int> _gaps = new();
+    private CompletionState _completionState;
+
+    public CompletionState GetCompletionState()
+    {
+        return _completionState;
+    }
+
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
         SnTrace.Write("SAQT: started");
         var finishedList = new List<Activity>(); // temporary
-        var lastStartedId = 0;
+        var lastStartedId = _lastExecutedId;
 
         while (true)
         {
@@ -99,10 +190,12 @@ public class ActivityQueue : IDisposable
 
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
+                // If the current activity is "unprocessed" (startup mode), it needs to process instantly and
+                //   skip not-loaded activities because the activity may process a gap.
                 while (_waitingList.Count > 0)
                 {
                     var activityToExecute = _waitingList[0];
-                    if (activityToExecute.Id <= lastStartedId) // already arrived or executed
+                    if (!activityToExecute.IsUnprocessedActivity && activityToExecute.Id <= lastStartedId) // already arrived or executed
                     {
                         _waitingList.RemoveAt(0);
                         var existing = GetAllFromChains(_executingList)
@@ -120,8 +213,9 @@ public class ActivityQueue : IDisposable
                             activityToExecute.StartFinalizationTask();
                         }
                     }
-                    else if (activityToExecute.Id == lastStartedId + 1) // arrived in order
+                    else if (activityToExecute.IsUnprocessedActivity || activityToExecute.Id == lastStartedId + 1) // arrived in order
                     {
+
                         _waitingList.RemoveAt(0);
 
                         // Discover dependencies
@@ -189,6 +283,7 @@ public class ActivityQueue : IDisposable
                     //UNDONE: memorize activity in the ActivityHistory.
                     finishedActivity.StartFinalizationTask();
                     _executingList.Remove(finishedActivity);
+                    FinishActivity(finishedActivity);
 
                     foreach (var attachment in finishedActivity.Attachments)
                     {
@@ -227,6 +322,25 @@ public class ActivityQueue : IDisposable
         }
 
         SnTrace.Write("SAQT: finished");
+    }
+    private void FinishActivity(Activity activity)
+    {
+        var id = activity.Id;
+        if (activity.ExecutionException == null)
+        {
+            if (id > _lastExecutedId)
+            {
+                if (id > _lastExecutedId + 1)
+                    _gaps.AddRange(Enumerable.Range(_lastExecutedId + 1, id - _lastExecutedId - 1));
+                _lastExecutedId = id;
+            }
+            else
+            {
+                _gaps.Remove(id);
+            }
+            _completionState = new CompletionState {LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray()};
+            SnTrace.Write(() => $"SAQT: State after finishing SA{id}: {_completionState}");
+        }
     }
     private async Task LoadLastActivities(int fromId, CancellationToken cancel)
     {

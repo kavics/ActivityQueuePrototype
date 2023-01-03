@@ -21,6 +21,8 @@ public class App : IDisposable
     {
         SnTrace.Write("App: start.");
 
+        await _activityQueue.StartAsync(CancellationToken.None);
+
         var context = new Context(_activityQueue);
         var cancellation = new CancellationTokenSource();
 

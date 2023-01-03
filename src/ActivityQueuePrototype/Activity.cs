@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using Newtonsoft.Json;
 using SenseNet.Diagnostics;
 
@@ -15,10 +16,21 @@ public class Activity
     [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
     [field: NonSerialized, JsonIgnore] private Func<Activity, Activity, bool>? _checkDependencyCallback; // for prototype only
+    [field: NonSerialized, JsonIgnore] private Action<Activity>? _executionCallback; // for prototype only
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity is loaded from the database.
+    /// </summary>
     [field: NonSerialized, JsonIgnore] public bool FromDatabase { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity comes from the message receiver.
+    /// </summary>
     [field: NonSerialized, JsonIgnore] public bool FromReceiver { get; set; }
+    /// <summary>
+    /// Gets or sets whether the activity is loaded from the database at the system start.
+    /// </summary>
+    [field: NonSerialized, JsonIgnore] public bool IsUnprocessedActivity { get; set; }
 
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
     [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
@@ -28,8 +40,11 @@ public class Activity
 
     public int Id { get; set; }
     public string TypeName { get; }
+    public Exception? ExecutionException { get; private set; }
 
-    public Activity(int id, int delay, Func<Activity, Activity, bool>? checkDependencyCallback = null)
+    public Activity(int id, int delay,
+        Func<Activity, Activity, bool>? checkDependencyCallback = null,
+        Action<Activity> executionCallback = null)
     {
         Interlocked.Increment(ref _objectId);
         Key = $"{id}-{_objectId}";
@@ -37,6 +52,7 @@ public class Activity
         _delay = delay;
         TypeName = GetType().Name;
         _checkDependencyCallback = checkDependencyCallback;
+        _executionCallback = executionCallback;
     }
 
     internal Task CreateTaskForWait()
@@ -66,9 +82,26 @@ public class Activity
 
     internal void ExecuteInternal()
     {
-        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
-        Task.Delay(_delay).GetAwaiter().GetResult();
-        op.Successful = true;
+        try
+        {
+            using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
+            if (_executionCallback != null)
+            {
+                _executionCallback(this);
+                op.Successful = true;
+                return;
+            }
+
+            Task.Delay(_delay).GetAwaiter().GetResult();
+            op.Successful = true;
+        }
+        catch (Exception e)
+        {
+            ExecutionException = e;
+
+            // we log this here, because if the activity is not waited for later than the exception would not be logged
+            SnTrace.WriteError(() => $"Error during security activity execution. SA{Id} {e}");
+        }
     }
 
     public void WaitFor(Activity olderActivity)
