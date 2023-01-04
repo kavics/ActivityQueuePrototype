@@ -52,7 +52,7 @@ public class SecurityActivityQueueTests
     [DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
-    public async Task AQ_RandomActivities_WithoutDuplications(int count)
+    public async Task SAQ_RandomActivities_WithoutDuplications(int count)
     {
         SnTrace.Write(() => "Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
@@ -87,7 +87,7 @@ public class SecurityActivityQueueTests
     [DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
-    public async Task AQ_RandomActivities_WithDuplications(int count)
+    public async Task SAQ_RandomActivities_WithDuplications(int count)
     {
         SnTrace.Write("Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
@@ -119,7 +119,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Duplications()
+    public async Task SAQ_Activities_Duplications()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -150,7 +150,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_1()
+    public async Task SAQ_Activities_Dependencies_1()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -181,7 +181,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_Chain()
+    public async Task SAQ_Activities_Dependencies_Chain()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -213,7 +213,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_ParallelsAndChains()
+    public async Task SAQ_Activities_Dependencies_ParallelsAndChains()
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -245,7 +245,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -278,7 +278,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_DB_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_DB_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler();
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -311,7 +311,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Net_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_Net_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler { EnableLoad = false };
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -346,7 +346,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_DbNet_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_DbNet_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler();
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -381,7 +381,7 @@ public class SecurityActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Gaps_Start()
+    public async Task SAQ_Gaps_Start()
     {
         var dataHandler = new DataHandler();
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -395,7 +395,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual("10(4,6,7)", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Loaded()
+    public async Task SAQ_Gaps_Loaded()
     {
         var dataHandler = new DataHandler();
         var activityQueue = new SecurityActivityQueue(dataHandler);
@@ -413,7 +413,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual("15()", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Working_123()
+    public async Task SAQ_Gaps_Working_123()
     {
         void ExecutionCallback(SecurityActivity obj) { throw new NotImplementedException(); }
 
@@ -440,7 +440,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual("3(2)", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Working_132()
+    public async Task SAQ_Gaps_Working_132()
     {
         void ExecutionCallback(SecurityActivity obj) { throw new NotSupportedException(); }
 
