@@ -1,4 +1,4 @@
-﻿using ActivityQueuePrototype;
+﻿using SecurityActivityQueuePrototype;
 using SenseNet.Diagnostics;
 
 

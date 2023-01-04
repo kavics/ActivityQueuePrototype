@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Threading.Channels;
 using SenseNet.Diagnostics;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
 /// <summary>
 /// Contains information about the executed activities.
@@ -39,13 +39,13 @@ public class CompletionState
 }
 
 
-public class ActivityQueue : IDisposable
+public class SecurityActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
     private CancellationTokenSource _activityQueueControllerThreadCancellation;
     private Task _activityQueueThreadController;
 
-    public ActivityQueue(DataHandler dataHandler)
+    public SecurityActivityQueue(DataHandler dataHandler)
     {
         _dataHandler = dataHandler;
     }
@@ -115,7 +115,7 @@ public class ActivityQueue : IDisposable
     }
 
     // Activity arrival
-    public Task ExecuteAsync(Activity activity, CancellationToken cancel)
+    public Task ExecuteAsync(SecurityActivity activity, CancellationToken cancel)
     {
         if (!activity.FromDatabase && !activity.FromReceiver)
             _dataHandler.SaveActivityAsync(activity, cancel).GetAwaiter().GetResult();
@@ -132,9 +132,9 @@ public class ActivityQueue : IDisposable
     }
 
     private readonly AutoResetEvent _waitToWorkSignal = new AutoResetEvent(false);
-    private readonly ConcurrentQueue<Activity> _arrivalQueue = new();
-    private readonly List<Activity> _waitingList = new();
-    private readonly List<Activity> _executingList = new();
+    private readonly ConcurrentQueue<SecurityActivity> _arrivalQueue = new();
+    private readonly List<SecurityActivity> _waitingList = new();
+    private readonly List<SecurityActivity> _executingList = new();
     private Task? _activityLoaderTask;
     private long _workCycle = 0;
 
@@ -150,7 +150,7 @@ public class ActivityQueue : IDisposable
     private void ControlActivityQueueThread(CancellationToken cancel)
     {
         SnTrace.Write("SAQT: started");
-        var finishedList = new List<Activity>(); // temporary
+        var finishedList = new List<SecurityActivity>(); // temporary
         var lastStartedId = _lastExecutedId;
 
         while (true)
@@ -225,7 +225,7 @@ public class ActivityQueue : IDisposable
 
         SnTrace.Write("SAQT: finished");
     }
-    private void LineUpArrivedActivities(ConcurrentQueue<Activity> arrivalQueue, List<Activity> waitingList)
+    private void LineUpArrivedActivities(ConcurrentQueue<SecurityActivity> arrivalQueue, List<SecurityActivity> waitingList)
     {
         // Move arrived items to the waiting list
         while (arrivalQueue.Count > 0)
@@ -237,7 +237,7 @@ public class ActivityQueue : IDisposable
         waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
         SnTrace.Write(() => $"SAQT: arrivalSortedList.Count: {waitingList.Count}");
     }
-    private void AttachOrIgnore(Activity activity, List<Activity> waitingList, List<Activity> executingList)
+    private void AttachOrIgnore(SecurityActivity activity, List<SecurityActivity> waitingList, List<SecurityActivity> executingList)
     {
         waitingList.RemoveAt(0);
         var existing = GetAllFromChains(executingList)
@@ -255,7 +255,7 @@ public class ActivityQueue : IDisposable
             activity.StartFinalizationTask();
         }
     }
-    private int ExecuteOrChain(Activity activity, List<Activity> waitingList, List<Activity> executingList)
+    private int ExecuteOrChain(SecurityActivity activity, List<SecurityActivity> waitingList, List<SecurityActivity> executingList)
     {
         waitingList.RemoveAt(0);
 
@@ -285,7 +285,7 @@ public class ActivityQueue : IDisposable
         // Unlock loading
         _activityLoaderTask = null;
     }
-    private void SuperviseExecutions(List<Activity> executingList, List<Activity> finishedList)
+    private void SuperviseExecutions(List<SecurityActivity> executingList, List<SecurityActivity> finishedList)
     {
         foreach (var activity in executingList)
         {
@@ -316,7 +316,7 @@ public class ActivityQueue : IDisposable
             }
         }
     }
-    private void ManageFinishedActivities(List<Activity> finishedList, List<Activity> executingList)
+    private void ManageFinishedActivities(List<SecurityActivity> finishedList, List<SecurityActivity> executingList)
     {
         foreach (var finishedActivity in finishedList)
         {
@@ -346,7 +346,7 @@ public class ActivityQueue : IDisposable
 
         finishedList.Clear();
     }
-    private void FinishActivity(Activity activity)
+    private void FinishActivity(SecurityActivity activity)
     {
         var id = activity.Id;
         if (activity.ExecutionException == null)
@@ -366,9 +366,9 @@ public class ActivityQueue : IDisposable
         }
     }
 
-    private IEnumerable<Activity> GetAllFromChains(List<Activity> roots)
+    private IEnumerable<SecurityActivity> GetAllFromChains(List<SecurityActivity> roots)
     {
-        var flattened = new List<Activity>(roots);
+        var flattened = new List<SecurityActivity>(roots);
         var index = 0;
         while (index < flattened.Count)
         {

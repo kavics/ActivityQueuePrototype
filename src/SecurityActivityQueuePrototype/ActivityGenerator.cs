@@ -1,28 +1,28 @@
 ﻿using System.Collections;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
 public class ActivityGenerator
 {
-    public IEnumerable<Activity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay,
-        Func<Activity, Activity, bool>? checkDependencyCallback = null)
+    public IEnumerable<SecurityActivity> Generate(int count, int randomness, RngConfig creationDelay, RngConfig executionDelay,
+        Func<SecurityActivity, SecurityActivity, bool>? checkDependencyCallback = null)
     {
         return GenerateByIds(GenerateIds(count, randomness), creationDelay, executionDelay, checkDependencyCallback);
     }
-    public IEnumerable<Activity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay,
-        Func<Activity, Activity, bool>? checkDependencyCallback = null)
+    public IEnumerable<SecurityActivity> GenerateDuplications(int maxId, RngConfig creationDelay, RngConfig executionDelay,
+        Func<SecurityActivity, SecurityActivity, bool>? checkDependencyCallback = null)
     {
         return GenerateByIds(GenerateRandomIds(maxId), creationDelay, executionDelay, checkDependencyCallback);
     }
-    public IEnumerable<Activity> GenerateByIds(IEnumerable<int> ids, RngConfig creationDelay, RngConfig executionDelay,
-        Func<Activity, Activity, bool>? checkDependencyCallback = null)
+    public IEnumerable<SecurityActivity> GenerateByIds(IEnumerable<int> ids, RngConfig creationDelay, RngConfig executionDelay,
+        Func<SecurityActivity, SecurityActivity, bool>? checkDependencyCallback = null)
     {
         foreach (var id in ids)
         {
             var delay = Rng.Next(creationDelay.Min, creationDelay.Max);
             if (delay > 0)
                 Task.Delay(delay).Wait();
-            yield return new Activity(id, Rng.Next(executionDelay.Min, executionDelay.Max), checkDependencyCallback);
+            yield return new SecurityActivity(id, Rng.Next(executionDelay.Min, executionDelay.Max), checkDependencyCallback);
         }
     }
 

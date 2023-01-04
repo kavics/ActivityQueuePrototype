@@ -3,10 +3,10 @@ using System.Diagnostics;
 using Newtonsoft.Json;
 using SenseNet.Diagnostics;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
 [DebuggerDisplay("Activity A{Id}")]
-public class Activity
+public class SecurityActivity
 {
     [field: NonSerialized, JsonIgnore] private static int _objectId; // for prototype only
 
@@ -15,8 +15,8 @@ public class Activity
     [field: NonSerialized, JsonIgnore] private Task _executionTask;
     [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
-    [field: NonSerialized, JsonIgnore] private Func<Activity, Activity, bool>? _checkDependencyCallback; // for prototype only
-    [field: NonSerialized, JsonIgnore] private Action<Activity>? _executionCallback; // for prototype only
+    [field: NonSerialized, JsonIgnore] private Func<SecurityActivity, SecurityActivity, bool>? _checkDependencyCallback; // for prototype only
+    [field: NonSerialized, JsonIgnore] private Action<SecurityActivity>? _executionCallback; // for prototype only
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     /// <summary>
@@ -32,9 +32,9 @@ public class Activity
     /// </summary>
     [field: NonSerialized, JsonIgnore] public bool IsUnprocessedActivity { get; set; }
 
-    [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingFor { get; private set; } = new List<Activity>();
-    [field: NonSerialized, JsonIgnore] internal List<Activity> WaitingForMe { get; private set; } = new List<Activity>();
-    [field: NonSerialized, JsonIgnore] internal List<Activity> Attachments { get; private set; } = new List<Activity>();
+    [field: NonSerialized, JsonIgnore] internal List<SecurityActivity> WaitingFor { get; private set; } = new List<SecurityActivity>();
+    [field: NonSerialized, JsonIgnore] internal List<SecurityActivity> WaitingForMe { get; private set; } = new List<SecurityActivity>();
+    [field: NonSerialized, JsonIgnore] internal List<SecurityActivity> Attachments { get; private set; } = new List<SecurityActivity>();
     [field: NonSerialized, JsonIgnore] internal string Key { get; }
 
 
@@ -42,9 +42,9 @@ public class Activity
     public string TypeName { get; }
     public Exception? ExecutionException { get; private set; }
 
-    public Activity(int id, int delay,
-        Func<Activity, Activity, bool>? checkDependencyCallback = null,
-        Action<Activity> executionCallback = null)
+    public SecurityActivity(int id, int delay,
+        Func<SecurityActivity, SecurityActivity, bool>? checkDependencyCallback = null,
+        Action<SecurityActivity> executionCallback = null)
     {
         Interlocked.Increment(ref _objectId);
         Key = $"{id}-{_objectId}";
@@ -72,7 +72,7 @@ public class Activity
 
     internal TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
 
-    internal bool ShouldWaitFor(Activity olderActivity) => _checkDependencyCallback?.Invoke(this, olderActivity) ?? false;
+    internal bool ShouldWaitFor(SecurityActivity olderActivity) => _checkDependencyCallback?.Invoke(this, olderActivity) ?? false;
 
     public Task ExecuteAsync(Context context, CancellationToken cancel)
     {
@@ -104,7 +104,7 @@ public class Activity
         }
     }
 
-    public void WaitFor(Activity olderActivity)
+    public void WaitFor(SecurityActivity olderActivity)
     {
         SnTrace.Write(() => $"SA: Make dependency: #SA{Key} depends from SA{olderActivity.Key}.");
         // this method should called from thread safe block.
@@ -113,20 +113,20 @@ public class Activity
         if (olderActivity.WaitingForMe.All(x => x.Id != Id))
             olderActivity.WaitingForMe.Add(this);
     }
-    public void FinishWaiting(Activity finishedActivity)
+    public void FinishWaiting(SecurityActivity finishedActivity)
     {
         // this method must called from thread safe block.
         RemoveDependency(WaitingFor, finishedActivity);
         RemoveDependency(finishedActivity.WaitingForMe, this);
     }
-    private void RemoveDependency(List<Activity> dependencyList, Activity activity)
+    private void RemoveDependency(List<SecurityActivity> dependencyList, SecurityActivity activity)
     {
         // this method must called from thread safe block.
         dependencyList.RemoveAll(x => x.Id == activity.Id);
     }
 
-    public Activity Clone()
+    public SecurityActivity Clone()
     {
-        return new Activity(Id, _delay, _checkDependencyCallback);
+        return new SecurityActivity(Id, _delay, _checkDependencyCallback);
     }
 }

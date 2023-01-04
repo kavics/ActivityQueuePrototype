@@ -1,6 +1,6 @@
-﻿using ActivityQueuePrototype;
+﻿using SecurityActivityQueuePrototype;
 
-namespace ActivityQueuePrototypeTests;
+namespace SecurityActivityQueuePrototypeTests;
 
 [TestClass]
 public class ActivityGeneratorTests
