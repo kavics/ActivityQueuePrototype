@@ -400,7 +400,7 @@ public class SecurityActivityQueueTests
         var dataHandler = new DataHandler();
         var activityQueue = new SecurityActivityQueue(dataHandler);
         await Task.WhenAll(Enumerable.Range(1, 15)
-            .Select(i => dataHandler.SaveActivityAsync(new Activity(1, 10), CancellationToken.None))
+            .Select(i => dataHandler.SaveActivityAsync(new SecurityActivity(1, 10), CancellationToken.None))
         );
 
         // ACTION
@@ -424,17 +424,17 @@ public class SecurityActivityQueueTests
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
-        await App.ExecuteActivity(new Activity(1, 0), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(1, 0), context, CancellationToken.None);
         await Task.Delay(1);
         var state = activityQueue.GetCompletionState();
         Assert.AreEqual("1()", state.ToString());
         
-        await App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(2, 0, null, ExecutionCallback), context, CancellationToken.None);
         await Task.Delay(1);
         state = activityQueue.GetCompletionState();
         Assert.AreEqual("1()", state.ToString());
 
-        await App.ExecuteActivity(new Activity(3, 0), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(3, 0), context, CancellationToken.None);
         await Task.Delay(1);
         state = activityQueue.GetCompletionState();
         Assert.AreEqual("3(2)", state.ToString());
@@ -454,9 +454,9 @@ public class SecurityActivityQueueTests
 
         var tasks = new[]
         {
-            App.ExecuteActivity(new Activity(1, 0), context, cancel),
-            App.ExecuteActivity(new Activity(3, 0), context, cancel),
-            App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, cancel)
+            App.ExecuteActivity(new SecurityActivity(1, 0), context, cancel),
+            App.ExecuteActivity(new SecurityActivity(3, 0), context, cancel),
+            App.ExecuteActivity(new SecurityActivity(2, 0, null, ExecutionCallback), context, cancel)
         };
         await Task.WhenAll(tasks);
         await Task.Delay(100, cancel);
