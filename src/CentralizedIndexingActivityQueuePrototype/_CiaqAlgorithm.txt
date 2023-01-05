@@ -1,0 +1,233 @@
+﻿DocumentPopulator.CreateActivityAndExecuteAsync(IndexingActivityType type, string path, int nodeId, int versionId, long versionTimestamp, VersioningInfo versioningInfo, IndexDocumentData indexDocumentData, CancellationToken cancellationToken)
+DocumentPopulator.CreateTreeActivityAndExecuteAsync(IndexingActivityType type, string path, int nodeId, IndexDocumentData indexDocumentData, CancellationToken cancellationToken)
+	DocumentPopulator.ExecuteActivityAsync(IndexingActivityBase activity, CancellationToken cancellationToken) ---> RegisterActivityAsync(activity, cancellationToken).ConfigureAwait(false);
+		IndexManager.ExecuteActivityAsync(IIndexingActivity activity, CancellationToken cancellationToken)
+			IndexManager.ExecuteCentralizedActivityAsync(IIndexingActivity activity, CancellationToken cancellationToken)
+				CentralizedIndexingActivityQueue.ExecuteActivity(IndexingActivityBase activity)
+
+==================================================================================
+SHORTENED
+
+// Entry point of the centralized indexing activity queue.
+ExecuteActivity(IndexingActivityBase activity)
+    try
+        DisablePolling();
+        EXECUTEACTIVITIES(activity, false);
+    finally
+        EnablePolling();
+-------------------------------------------------------------------
+_timer = new System.Timers.Timer(_hearthBeatMilliseconds);
+_timer.Elapsed += Polling;
+-------------------------------------------------------------------
+EnablePolling()
+    Interlocked.Decrement(ref _pollingBlockerCounter);
+DisablePolling()
+    Interlocked.Increment(ref _pollingBlockerCounter);
+bool IsPollingEnabled()
+    return _pollingBlockerCounter == 0;
+-------------------------------------------------------------------
+Polling()
+    RefreshLocks()
+    DeleteFinishedActivitiesOccasionally()
+    DisablePolling();
+    EXECUTEACTIVITIES();
+    EnablePolling();
+RefreshLocks()
+    _WAITINGACTIVITIES
+DeleteFinishedActivitiesOccasionally()
+int EXECUTEACTIVITIES()
+    _WAITINGACTIVITIES
+    Execute
+Execute()
+    _WAITINGACTIVITIES
+
+private readonly Dictionary<int, IndexingActivityBase> _WAITINGACTIVITIES
+
+==================================================================================
+MORE DETAILS
+
+// Entry point of the centralized indexing activity queue.
+ExecuteActivity(IndexingActivityBase activity)
+    try
+        DisablePolling();
+        ExecuteActivities(activity, false);
+    finally
+        EnablePolling();
+-------------------------------------------------------------------
+_timer = new System.Timers.Timer(_hearthBeatMilliseconds);
+_timer.Elapsed += Polling;
+-------------------------------------------------------------------
+EnablePolling()
+    Interlocked.Decrement(ref _pollingBlockerCounter);
+DisablePolling()
+    Interlocked.Increment(ref _pollingBlockerCounter);
+bool IsPollingEnabled()
+    return _pollingBlockerCounter == 0;
+-------------------------------------------------------------------
+Polling()
+    RefreshLocks();
+    DeleteFinishedActivitiesOccasionally();
+    if (!IsPollingEnabled())
+        return;
+    var timeLimit = _waitingActivities.Count > 0 ? _waitingPollingPeriod : _healthCheckPeriod;
+    if ((DateTime.UtcNow - _lastExecutionTime) > timeLimit && _activeTasks < ActiveTaskLimit)
+        try
+            DisablePolling();
+            ExecuteActivities(null, false);
+        finally
+            EnablePolling();
+-------------------------------------------------------------------
+RefreshLocks()
+    if (_lastLockRefreshTime.AddMilliseconds(_lockRefreshPeriodInMilliseconds) > DateTime.UtcNow)
+        return;
+    _lastLockRefreshTime = DateTime.UtcNow;
+    int[] waitingIds = _waitingActivities.Keys.ToArray();
+    if (waitingIds.Length == 0)
+        return;
+    await DataStore.RefreshIndexingActivityLockTimeAsync(waitingIds)
+-------------------------------------------------------------------
+DeleteFinishedActivitiesOccasionally()
+    if (DateTime.UtcNow - _lastDeleteFinishedTime >= _deleteFinishedPeriod)
+        await DataStore.DeleteFinishedIndexingActivitiesAsync(CancellationToken.None);
+        _lastDeleteFinishedTime = DateTime.UtcNow;
+-------------------------------------------------------------------
+/// Loads some executable activities and queries the state of the waiting activities in one database request.
+/// Releases the finished activities and executes the loaded ones in asynchron way.
+private int ExecuteActivities(IndexingActivityBase waitingActivity, bool systemStart)
+    if (waitingActivity != null)
+        if (_waitingActivities.TryGetValue(waitingActivity.Id, out IndexingActivityBase olderWaitingActivity))
+            // if exists, attach the current to existing.
+            olderWaitingActivity.Attach(waitingActivity);
+            // do not load executables because wait-polling cycle is active.
+            return 0;
+        // add to waiting list
+        _waitingActivities.Add(waitingActivity.Id, waitingActivity);
+
+    // get id array of waiting activities
+    int[] waitingActivityIds;
+    waitingActivityIds = _waitingActivities.Keys.ToArray();
+
+    // load some executable activities and currently finished ones
+    var result = await DataStore.LoadExecutableIndexingActivitiesAsync(_indexingActivityFactory, _maxCount, _runningTimeoutInSeconds, waitingActivityIds);
+    var loadedActivities = result.Activities;
+    var finishedActivitiyIds = result.FinishedActivitiyIds;
+
+    // release finished activities
+    if (finishedActivitiyIds.Length > 0)
+        foreach (var finishedActivitiyId in finishedActivitiyIds)
+            if (_waitingActivities.TryGetValue(finishedActivitiyId, out IndexingActivityBase finishedActivity))
+                _waitingActivities.Remove(finishedActivitiyId);
+                finishedActivity.Finish();
+
+    if (loadedActivities.Any())
+        // execute loaded activities
+        foreach (var loadedActivity in loadedActivities)
+            if (systemStart)
+                loadedActivity.IsUnprocessedActivity = true;
+            // If a loaded activity is the same as the current activity or
+            // the same as any of the already waiting activities, we have to
+            // drop the loaded instance and execute the waiting instance, otherwise
+            // the algorithm would not notice when the activity is finished and
+            // the finish signal is released.
+            IIndexingActivity executableActivity;
+            if (loadedActivity.Id == waitingActivity?.Id)
+                executableActivity = waitingActivity;
+            else
+                if (_waitingActivities.TryGetValue(loadedActivity.Id, out var otherWaitingActivity))
+                    // Found in the waiting list: drop the loaded one and execute the waiting.
+                    executableActivity = otherWaitingActivity;
+                else
+                    // If a loaded activity is not in the waiting list, we have to add it here
+                    // so that other threads may find it and be able to attach to it.
+
+                    _waitingActivities.Add(loadedActivity.Id, loadedActivity as IndexingActivityBase);
+                    executableActivity = loadedActivity;
+
+            System.Threading.Tasks.Task.Run(() => Execute(executableActivity));
+    // memorize last running time
+    _lastExecutionTime = DateTime.UtcNow;
+    return loadedActivities.Length;
+-------------------------------------------------------------------
+Execute(IIndexingActivity activity)
+    try
+        Interlocked.Increment(ref _activeTasks);
+        using (new Storage.Security.SystemAccount())
+            await activity.ExecuteIndexingActivityAsync(CancellationToken.None).GetAwaiter().GetResult();
+        await DataStore.UpdateIndexingActivityRunningStateAsync(activity.Id, IndexingActivityRunningState.Done);
+    catch (Exception e)
+        SnLog.WriteException(e, $"Indexing activity execution error. Activity: #{activity.Id} ({activity.ActivityType})");
+    finally
+        activity.Finish();
+        _waitingActivities.Remove(activity.Id);
+        Interlocked.Decrement(ref _activeTasks);
+
+==============================================================================
+
+        private readonly int _maxCount = 10;
+        private readonly int _runningTimeoutInSeconds = Configuration.Indexing.IndexingActivityTimeoutInSeconds; // 120
+        private readonly int _lockRefreshPeriodInMilliseconds;
+        private readonly int _hearthBeatMilliseconds = 1000;
+
+        private readonly TimeSpan _waitingPollingPeriod = TimeSpan.FromSeconds(2);
+        private readonly TimeSpan _healthCheckPeriod = TimeSpan.FromMinutes(2);
+        private readonly TimeSpan _deleteFinishedPeriod = TimeSpan.FromMinutes(23);
+        private const int ActiveTaskLimit = 43;
+
+        private System.Timers.Timer _timer;
+        private DateTime _lastExecutionTime;
+        private DateTime _lastLockRefreshTime;
+        private DateTime _lastDeleteFinishedTime;
+        private volatile int _activeTasks;
+        private int _pollingBlockerCounter;
+
+        private readonly Dictionary<int, IndexingActivityBase> _waitingActivities = new Dictionary<int, IndexingActivityBase>();
+
+        public CentralizedIndexingActivityQueue(IIndexingActivityFactory indexingActivityFactory)
+        {
+            _lockRefreshPeriodInMilliseconds = _runningTimeoutInSeconds * 3000 / 4;
+            _indexingActivityFactory = indexingActivityFactory;
+        }
+
+        public void Startup()
+        {
+            //TODO: [async] rewrite this using async APIs instead of Thread.Sleep.
+
+            var loadedCount = 0;
+            // executing unprocessed activities in system start sequence.
+            while (true)
+            {
+                // execute one charge in async way
+                if (_activeTasks < ActiveTaskLimit)
+                    loadedCount = ExecuteActivities(null, true);
+
+                if (loadedCount > 0)
+                    Thread.Sleep(_hearthBeatMilliseconds);
+
+                // finish execution cycle if everything is done.
+                if (_activeTasks == 0 && loadedCount == 0)
+                    break;
+
+                // wait a bit in case of too many active tasks
+                while (_activeTasks > ActiveTaskLimit)
+                    Thread.Sleep(_hearthBeatMilliseconds);
+            }
+
+            // every period starts now
+            _lastLockRefreshTime = DateTime.UtcNow;
+            _lastExecutionTime = DateTime.UtcNow;
+            _lastDeleteFinishedTime = DateTime.UtcNow;
+
+            _timer = new System.Timers.Timer(_hearthBeatMilliseconds);
+            _timer.Elapsed += Timer_Elapsed;
+            _timer.Disposed += Timer_Disposed;
+            // awakening (this is the judgement day)
+            _timer.Enabled = true;
+        }
+
+
+
+
+
+
+    }
+}
