@@ -119,8 +119,8 @@ private int ExecuteActivities(IndexingActivityBase waitingActivity, bool systemS
                 _waitingActivities.Remove(finishedActivitiyId);
                 finishedActivity.Finish();
 
+    // execute loaded activities
     if (loadedActivities.Any())
-        // execute loaded activities
         foreach (var loadedActivity in loadedActivities)
             if (systemStart)
                 loadedActivity.IsUnprocessedActivity = true;
@@ -139,7 +139,6 @@ private int ExecuteActivities(IndexingActivityBase waitingActivity, bool systemS
                 else
                     // If a loaded activity is not in the waiting list, we have to add it here
                     // so that other threads may find it and be able to attach to it.
-
                     _waitingActivities.Add(loadedActivity.Id, loadedActivity as IndexingActivityBase);
                     executableActivity = loadedActivity;
 

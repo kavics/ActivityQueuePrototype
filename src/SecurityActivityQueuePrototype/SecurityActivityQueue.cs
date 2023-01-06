@@ -58,7 +58,7 @@ public class SecurityActivityQueue : IDisposable
         _activityQueueThreadController.Dispose();
         _activityQueueControllerThreadCancellation.Dispose();
 
-        //UNDONE: remove comment if the cleaning CompletionState is required when disposing the ActivityQueue
+        //UNDONE: SAQ: remove comment if the cleaning CompletionState is required when disposing the ActivityQueue
         //_lastExecutedId = 0;
         //_gaps.Clear();
         //_completionState = new CompletionState();
@@ -126,7 +126,7 @@ public class SecurityActivityQueue : IDisposable
             SnTrace.Write(() => $"SAQ: Arrive #SA{activity.Key}");
 
         _arrivalQueue.Enqueue(activity);
-        _waitToWorkSignal.Set(); //UNDONE: This instruction should replaced to other places (timer?).
+        _waitToWorkSignal.Set(); //UNDONE: SAQ: This instruction should replaced to other places (timer?).
 
         return activity.CreateTaskForWait();
     }
@@ -172,7 +172,7 @@ public class SecurityActivityQueue : IDisposable
 
                 // Continue working
                 _workCycle++;
-                SnTrace.Custom.Write(() => $"SAQT: works (cycle: {_workCycle}, " +
+                SnTrace.Write(() => $"SAQT: works (cycle: {_workCycle}, " +
                                            $"_arrivalQueue.Count: {_arrivalQueue.Count}), " +
                                            $"_executingList.Count: {_executingList.Count}");
 
@@ -197,7 +197,7 @@ public class SecurityActivityQueue : IDisposable
                     {
                         // Load the missed out activities from database or skip this if it is happening right now.
                         _activityLoaderTask ??= Task.Run(() => LoadLastActivities(lastStartedId + 1, cancel));
-                        break; //UNDONE: are you sure to exit here?
+                        break; //UNDONE: SAQ: are you sure to exit here?
                     }
                 }
 
@@ -216,7 +216,7 @@ public class SecurityActivityQueue : IDisposable
             {
                 SnTrace.WriteError(() => e.ToString());
 
-                //UNDONE: Cancel all waiting tasks
+                //UNDONE: SAQ: Cancel all waiting tasks
                 _waitingList.FirstOrDefault()?.StartFinalizationTask();
 
                 break;
@@ -321,7 +321,7 @@ public class SecurityActivityQueue : IDisposable
         foreach (var finishedActivity in finishedList)
         {
             SnTrace.Write(() => $"SAQT: execution finished: #SA{finishedActivity.Key}");
-            //UNDONE: memorize activity in the ActivityHistory.
+            //UNDONE: SAQ: memorize activity in the ActivityHistory?
             finishedActivity.StartFinalizationTask();
             executingList.Remove(finishedActivity);
             FinishActivity(finishedActivity);

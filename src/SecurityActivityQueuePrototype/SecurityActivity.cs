@@ -8,15 +8,15 @@ namespace SecurityActivityQueuePrototype;
 [DebuggerDisplay("Activity A{Id}")]
 public class SecurityActivity
 {
-    [field: NonSerialized, JsonIgnore] private static int _objectId; // for prototype only
+    [field: NonSerialized, JsonIgnore] private static int _objectId; // only for the prototype
 
-    [field: NonSerialized, JsonIgnore] private readonly int _delay; // for prototype only
+    [field: NonSerialized, JsonIgnore] private readonly int _delay; // only for the prototype
 
     [field: NonSerialized, JsonIgnore] private Task _executionTask;
     [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
 
-    [field: NonSerialized, JsonIgnore] private Func<SecurityActivity, SecurityActivity, bool>? _checkDependencyCallback; // for prototype only
-    [field: NonSerialized, JsonIgnore] private Action<SecurityActivity>? _executionCallback; // for prototype only
+    [field: NonSerialized, JsonIgnore] private Func<SecurityActivity, SecurityActivity, bool>? _checkDependencyCallback; // only for the prototype
+    [field: NonSerialized, JsonIgnore] private Action<SecurityActivity>? _executionCallback; // only for the prototype
 
     [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     /// <summary>

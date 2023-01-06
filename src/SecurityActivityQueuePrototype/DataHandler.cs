@@ -19,7 +19,7 @@ public class LoadCompletionStateResult
 
 public class DataHandler
 {
-    public bool EnableLoad { get; set; } = true;
+    public bool EnableLoad { get; set; } = true; // Only for the prototype
 
     readonly List<SecurityActivity> _activities = new();
 
@@ -60,7 +60,7 @@ public class DataHandler
 
     internal Task<LoadCompletionStateResult> LoadCompletionStateAsync(CancellationToken cancel)
     {
-        //UNDONE: LoadCompletionStateAsync is not implemented;
+        //UNDONE: SAQ: LoadCompletionStateAsync is not implemented;
         var result = new LoadCompletionStateResult {CompletionState = new CompletionState(), LastDatabaseId = 0};
         return Task.FromResult(result);
     }
