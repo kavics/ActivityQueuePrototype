@@ -78,7 +78,7 @@ public class CentralizedIndexingActivityQueue : IDisposable
                 // Wait if there is nothing to do
                 if (_waitingList.Count == 0 && _executingList.Count == 0)
                 {
-                    SnTrace.Write(() => $"CIAQT: waiting for arrival #SA{lastStartedId + 1}");
+                    SnTrace.Write(() => $"CIAQT: waiting for arrival");
                     _waitToWorkSignal.WaitOne();
                 }
 
@@ -171,7 +171,7 @@ ManageFinishedActivities(finishedList, _executingList);
                 case TaskStatus.Created:
                 case TaskStatus.WaitingForActivation:
                 case TaskStatus.WaitingToRun:
-                    SnTrace.Write(() => $"CIAQT: start execution: #SA{activity.Key}");
+                    SnTrace.Write(() => $"CIAQT: start execution: #IA{activity.Key}");
                     activity.StartExecutionTask();
                     break;
 
@@ -197,7 +197,7 @@ ManageFinishedActivities(finishedList, _executingList);
     {
         foreach (var finishedActivity in finishedList)
         {
-            SnTrace.Write(() => $"CIAQT: execution finished: #SA{finishedActivity.Key}");
+            SnTrace.Write(() => $"CIAQT: execution finished: #IA{finishedActivity.Key}");
             finishedActivity.StartFinalizationTask();
             executingList.Remove(finishedActivity);
         }

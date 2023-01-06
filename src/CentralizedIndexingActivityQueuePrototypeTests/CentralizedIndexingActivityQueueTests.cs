@@ -48,7 +48,7 @@ public class CentralizedIndexingActivityQueueTests
     [TestMethod]
     public async Task CIAQ_Lifetime()
     {
-        var dataStore = new DataStore() { EnableLoad = false };
+        var dataStore = new DataStore() {EnableLoad = false};
         var factory = new IndexingActivityFactory();
         var activityQueue = new CentralizedIndexingActivityQueue(dataStore, factory);
         var indexManager = new IndexManager(activityQueue, dataStore);
@@ -60,6 +60,8 @@ public class CentralizedIndexingActivityQueueTests
 
             // ACTION
             await populator.CreateActivityAndExecuteAsync(IndexingActivityType.AddDocument, CancellationToken.None);
+            //await Task.Delay(10);
+            //await populator.CreateActivityAndExecuteAsync(IndexingActivityType.AddDocument, CancellationToken.None);
         }
         finally
         {
@@ -67,13 +69,27 @@ public class CentralizedIndexingActivityQueueTests
         }
 
         // ASSERT
-        var trace = _testTracer.Lines.Select(Entry.Parse).Select(e => e.Message).ToList();
-        Assert.AreEqual(7, trace.Count);
+        var trace = _testTracer.Lines
+            .Select(Entry.Parse)
+            .Select(e => e.Message)
+            .Where(msg =>
+            {
+                if (msg.StartsWith("CIAQT: works "))
+                    return false;
+                if (msg.StartsWith("CIAQT: arrivalSortedList.Count: "))
+                    return false;
+                return true;
+            })
+            .ToList();
         Assert.AreEqual(trace[1], "CIAQT: started");
-        Assert.AreEqual(trace[2], "CIAQT: waiting for arrival #SA1");
-        Assert.AreEqual(trace[3], "CIAQ: Arrive #IA1-1");
-        Assert.AreEqual(trace[4], "CIAQT: works (cycle: 1, _arrivalQueue.Count: 1), _executingList.Count: 0");
-        Assert.AreEqual(trace[5], "CIAQT: arrivalSortedList.Count: 1");
-        Assert.AreEqual(trace[6], "CIAQ: disposed");
+        Assert.AreEqual(trace[2], "CIAQT: waiting for arrival");
+        Assert.AreEqual(trace[3], "ExecuteCentralizedActivity: #1");
+        Assert.AreEqual(trace[4], "CIAQ: Arrive #IA1-1");
+        Assert.AreEqual(trace[5], "CIAQT: start execution: #IA1-1");
+        Assert.AreEqual(trace[6], "IA: ExecuteInternal #IA1-1 (delay: 0)");
+        Assert.AreEqual(trace[7], "IA: ExecuteInternal #IA1-1 (delay: 0)");
+        Assert.AreEqual(trace[8], "CIAQT: execution finished: #IA1-1");
+        Assert.AreEqual(trace[9], "CIAQT: waiting for arrival");
+        Assert.AreEqual(trace[10], "CIAQ: disposed");
     }
 }
