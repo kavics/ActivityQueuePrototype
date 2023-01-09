@@ -1,6 +1,6 @@
 ﻿using SenseNet.Diagnostics;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
 /// <summary>
 /// Contains information about the executed activities and last activity id in the database.
@@ -19,11 +19,11 @@ public class LoadCompletionStateResult
 
 public class DataHandler
 {
-    public bool EnableLoad { get; set; } = true;
+    public bool EnableLoad { get; set; } = true; // Only for the prototype
 
-    readonly List<Activity> _activities = new();
+    readonly List<SecurityActivity> _activities = new();
 
-    public async Task SaveActivityAsync(Activity activity, CancellationToken cancel)
+    public async Task SaveActivityAsync(SecurityActivity activity, CancellationToken cancel)
     {
         // Only simulation
         lock(_activities)
@@ -37,14 +37,14 @@ public class DataHandler
         op.Successful = true;
     }
 
-    public async Task<IEnumerable<Activity>> LoadLastActivities(int fromId, CancellationToken cancel)
+    public async Task<IEnumerable<SecurityActivity>> LoadLastActivities(int fromId, CancellationToken cancel)
     {
         if (!EnableLoad)
-            return Array.Empty<Activity>();
+            return Array.Empty<SecurityActivity>();
 
         using var op = SnTrace.StartOperation(() => $"DataHandler: LoadLastActivities(fromId: {fromId})");
 
-        Activity[] result;
+        SecurityActivity[] result;
         lock (_activities)
         {
             result = _activities
@@ -60,7 +60,7 @@ public class DataHandler
 
     internal Task<LoadCompletionStateResult> LoadCompletionStateAsync(CancellationToken cancel)
     {
-        //UNDONE: LoadCompletionStateAsync is not implemented;
+        //UNDONE: SAQ: LoadCompletionStateAsync is not implemented;
         var result = new LoadCompletionStateResult {CompletionState = new CompletionState(), LastDatabaseId = 0};
         return Task.FromResult(result);
     }

@@ -1,16 +1,13 @@
-using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
-using ActivityQueuePrototype;
-using Microsoft.Extensions.Logging;
-using SenseNet.Configuration;
+using SecurityActivityQueuePrototype;
 using SenseNet.Diagnostics;
 using SenseNet.Diagnostics.Analysis;
-using Activity = ActivityQueuePrototype.Activity;
+using SecurityActivity = SecurityActivityQueuePrototype.SecurityActivity;
 
-namespace ActivityQueuePrototypeTests;
+namespace SecurityActivityQueuePrototypeTests;
 
 [TestClass]
-public class ActivityQueueTests
+public class SecurityActivityQueueTests
 {
     private class TestTracer:ISnTracer
     {
@@ -55,11 +52,11 @@ public class ActivityQueueTests
     [DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
-    public async Task AQ_RandomActivities_WithoutDuplications(int count)
+    public async Task SAQ_RandomActivities_WithoutDuplications(int count)
     {
         SnTrace.Write(() => "Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -90,11 +87,11 @@ public class ActivityQueueTests
     [DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
-    public async Task AQ_RandomActivities_WithDuplications(int count)
+    public async Task SAQ_RandomActivities_WithDuplications(int count)
     {
         SnTrace.Write("Test: Activity count: " + count);
         var dataHandler = new DataHandler {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -122,10 +119,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Duplications()
+    public async Task SAQ_Activities_Duplications()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -153,10 +150,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_1()
+    public async Task SAQ_Activities_Dependencies_1()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -184,10 +181,10 @@ public class ActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_Chain()
+    public async Task SAQ_Activities_Dependencies_Chain()
     {
         var dataHandler = new DataHandler {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -216,10 +213,10 @@ public class ActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_ParallelsAndChains()
+    public async Task SAQ_Activities_Dependencies_ParallelsAndChains()
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -248,10 +245,10 @@ public class ActivityQueueTests
         Assert.AreEqual(null, msg);
     }
     [TestMethod]
-    public async Task AQ_Activities_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler{ EnableLoad = false };
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -281,10 +278,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_DB_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_DB_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler();
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -314,10 +311,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_Net_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_Net_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler { EnableLoad = false };
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -349,10 +346,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Activities_DbNet_Dependencies_ParallelsAndChainsAndAttachments()
+    public async Task SAQ_Activities_DbNet_Dependencies_ParallelsAndChainsAndAttachments()
     {
         var dataHandler = new DataHandler();
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -384,10 +381,10 @@ public class ActivityQueueTests
     }
 
     [TestMethod]
-    public async Task AQ_Gaps_Start()
+    public async Task SAQ_Gaps_Start()
     {
         var dataHandler = new DataHandler();
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(new CompletionState{LastActivityId = 10, Gaps = new []{4, 6, 7}}, 15,
             CancellationToken.None);
 
@@ -398,12 +395,12 @@ public class ActivityQueueTests
         Assert.AreEqual("10(4,6,7)", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Loaded()
+    public async Task SAQ_Gaps_Loaded()
     {
         var dataHandler = new DataHandler();
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await Task.WhenAll(Enumerable.Range(1, 15)
-            .Select(i => dataHandler.SaveActivityAsync(new Activity(1, 10), CancellationToken.None))
+            .Select(i => dataHandler.SaveActivityAsync(new SecurityActivity(1, 10), CancellationToken.None))
         );
 
         // ACTION
@@ -416,39 +413,39 @@ public class ActivityQueueTests
         Assert.AreEqual("15()", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Working_123()
+    public async Task SAQ_Gaps_Working_123()
     {
-        void ExecutionCallback(Activity obj) { throw new NotImplementedException(); }
+        void ExecutionCallback(SecurityActivity obj) { throw new NotImplementedException(); }
 
         var dataHandler = new DataHandler();
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
         var cancellation = new CancellationTokenSource();
 
-        await App.ExecuteActivity(new Activity(1, 0), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(1, 0), context, CancellationToken.None);
         await Task.Delay(1);
         var state = activityQueue.GetCompletionState();
         Assert.AreEqual("1()", state.ToString());
         
-        await App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(2, 0, null, ExecutionCallback), context, CancellationToken.None);
         await Task.Delay(1);
         state = activityQueue.GetCompletionState();
         Assert.AreEqual("1()", state.ToString());
 
-        await App.ExecuteActivity(new Activity(3, 0), context, CancellationToken.None);
+        await App.ExecuteActivity(new SecurityActivity(3, 0), context, CancellationToken.None);
         await Task.Delay(1);
         state = activityQueue.GetCompletionState();
         Assert.AreEqual("3(2)", state.ToString());
     }
     [TestMethod]
-    public async Task AQ_Gaps_Working_132()
+    public async Task SAQ_Gaps_Working_132()
     {
-        void ExecutionCallback(Activity obj) { throw new NotSupportedException(); }
+        void ExecutionCallback(SecurityActivity obj) { throw new NotSupportedException(); }
 
         var dataHandler = new DataHandler() {EnableLoad = false};
-        var activityQueue = new ActivityQueue(dataHandler);
+        var activityQueue = new SecurityActivityQueue(dataHandler);
         await activityQueue.StartAsync(CancellationToken.None);
 
         var context = new Context(activityQueue);
@@ -457,9 +454,9 @@ public class ActivityQueueTests
 
         var tasks = new[]
         {
-            App.ExecuteActivity(new Activity(1, 0), context, cancel),
-            App.ExecuteActivity(new Activity(3, 0), context, cancel),
-            App.ExecuteActivity(new Activity(2, 0, null, ExecutionCallback), context, cancel)
+            App.ExecuteActivity(new SecurityActivity(1, 0), context, cancel),
+            App.ExecuteActivity(new SecurityActivity(3, 0), context, cancel),
+            App.ExecuteActivity(new SecurityActivity(2, 0, null, ExecutionCallback), context, cancel)
         };
         await Task.WhenAll(tasks);
         await Task.Delay(100, cancel);

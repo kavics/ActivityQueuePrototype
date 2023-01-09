@@ -1,4 +1,4 @@
-﻿namespace ActivityQueuePrototype;
+﻿namespace SecurityActivityQueuePrototype;
 
 internal class Rng
 {

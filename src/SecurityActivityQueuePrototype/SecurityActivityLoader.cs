@@ -1,8 +1,8 @@
 ﻿using System.Collections;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
-internal class SecurityActivityLoader : IEnumerable<Activity>
+internal class SecurityActivityLoader : IEnumerable<SecurityActivity>
 {
     private readonly bool _gapLoader;
 
@@ -34,13 +34,13 @@ internal class SecurityActivityLoader : IEnumerable<Activity>
     {
         return GetEnumerator();
     }
-    public IEnumerator<Activity> GetEnumerator()
+    public IEnumerator<SecurityActivity> GetEnumerator()
     {
         if (_gapLoader)
         {
             foreach (var gap in _gaps)
             {
-                yield return new Activity(gap, 10)
+                yield return new SecurityActivity(gap, 10)
                 {
                     FromDatabase = true,
                     IsUnprocessedActivity = _executingUnprocessedActivities
@@ -51,7 +51,7 @@ internal class SecurityActivityLoader : IEnumerable<Activity>
         {
             for (int id = _from; id <= _to; id++)
             {
-                yield return new Activity(id, 10)
+                yield return new SecurityActivity(id, 10)
                 {
                     FromDatabase = true,
                     IsUnprocessedActivity = _executingUnprocessedActivities

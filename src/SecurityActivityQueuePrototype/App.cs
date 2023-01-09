@@ -2,19 +2,19 @@
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-namespace ActivityQueuePrototype;
+namespace SecurityActivityQueuePrototype;
 
 public class App : IDisposable
 {
     private readonly string[] _args;
-    private readonly ActivityQueue _activityQueue;
+    private readonly SecurityActivityQueue _activityQueue;
     private readonly DataHandler _dataHandler;
 
     public App(string[] args)
     {
         _args = args;
         _dataHandler = new DataHandler();
-        _activityQueue = new ActivityQueue(_dataHandler);
+        _activityQueue = new SecurityActivityQueue(_dataHandler);
     }
 
     public async Task RunAsync()
@@ -69,10 +69,10 @@ public class App : IDisposable
 
     public static  Task ExecuteActivity(int id, int delay, Context context, CancellationToken cancel)
     {
-        var activity = new Activity(id, delay);
+        var activity = new SecurityActivity(id, delay);
         return ExecuteActivity(activity, context, cancel);
     }
-    public static async Task ExecuteActivity(Activity activity, Context context, CancellationToken cancel)
+    public static async Task ExecuteActivity(SecurityActivity activity, Context context, CancellationToken cancel)
     {
         if (activity.FromReceiver)
         {
