@@ -57,7 +57,7 @@ public class SecurityActivity
 
     internal Task CreateTaskForWait()
     {
-        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning);
+        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
     internal void StartExecutionTask()
