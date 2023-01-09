@@ -1,8 +1,20 @@
 ﻿namespace CentralizedIndexingActivityQueuePrototype;
 
+public class ExecutableIndexingActivitiesResult
+{
+    public IIndexingActivity[] Activities { get; set; }
+    public int[] FinishedActivitiyIds { get; set; }
+}
+
 public interface IDataStore
 {
     Task RegisterIndexingActivityAsync(IndexingActivityBase activity, CancellationToken cancellationToken);
+
+    public Task<ExecutableIndexingActivitiesResult> LoadExecutableIndexingActivitiesAsync(
+        IIndexingActivityFactory activityFactory, int maxCount, int runningTimeoutInSeconds,
+        int[] waitingActivityIds,
+        CancellationToken cancellationToken);
+
 }
 
 public class IndexingActivityDoc
@@ -187,5 +199,11 @@ public class DataStore : IDataStore
             //Extension = activity.Extension
         });
         return Task.CompletedTask;
+    }
+
+    public Task<ExecutableIndexingActivitiesResult> LoadExecutableIndexingActivitiesAsync(IIndexingActivityFactory activityFactory,
+        int maxCount, int runningTimeoutInSeconds, int[] waitingActivityIds, CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
     }
 }

@@ -53,6 +53,9 @@ public interface IQueuedActivity
     void StartExecutionTask();
     void StartFinalizationTask();
     TaskStatus GetExecutionTaskStatus();
+
+    void Attach(IIndexingActivity activity);
+    void Finish2(); // Different from original Finish() that uses an AsyncAutoResetEvent
 }
 public interface IIndexingActivity : IQueuedActivity
 {
@@ -79,6 +82,10 @@ public abstract class IndexingActivityBase : IIndexingActivity
     public bool FromDatabase { get; set; }
     public bool IsUnprocessedActivity { get; set; }
 
+    internal IIndexingActivity? AttachedActivity { get; private set; }
+
+
+
     protected IndexingActivityBase(IndexingActivityType activityType)
     {
         ActivityType = activityType;
@@ -90,6 +97,27 @@ public abstract class IndexingActivityBase : IIndexingActivity
     private Task _executionTask;
     private Task _finalizationTask;
     public TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
+    public void Attach(IIndexingActivity activity)
+    {
+        if (AttachedActivity != null)
+            AttachedActivity.Attach(activity);
+        else
+            AttachedActivity = activity;
+    }
+
+    public void Finish2()
+    {
+        // finalize attached activities first
+        if (AttachedActivity != null)
+        {
+            SnTrace.Write("Attached IndexingActivity finished: A{0}.", AttachedActivity.Id);
+            AttachedActivity.Finish2();
+        }
+
+        StartFinalizationTask();
+        SnTrace.Write("IndexingActivity finished: A{0}.", Id);
+    }
+
     public Task CreateTaskForWait()
     {
         _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning);

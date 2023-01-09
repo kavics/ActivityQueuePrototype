@@ -1,19 +1,20 @@
 ﻿using System.Collections.Concurrent;
 using System.Configuration;
+using System.Diagnostics;
 using SenseNet.Diagnostics;
 
 namespace CentralizedIndexingActivityQueuePrototype;
 
 public class CentralizedIndexingActivityQueue : IDisposable
 {
-    private readonly DataStore _dataHandler;
+    private readonly DataStore _dataStore;
     private readonly IIndexingActivityFactory _indexingActivityFactory;
     private CancellationTokenSource _activityQueueControllerThreadCancellation;
     private Task _activityQueueThreadController;
 
     public CentralizedIndexingActivityQueue(DataStore dataHandler, IIndexingActivityFactory indexingActivityFactory)
     {
-        _dataHandler = dataHandler;
+        _dataStore = dataHandler;
         _indexingActivityFactory = indexingActivityFactory;
     }
 
@@ -116,8 +117,9 @@ public class CentralizedIndexingActivityQueue : IDisposable
     }
 
 
-    //private readonly int _maxCount = 10;
-    //private readonly int _runningTimeoutInSeconds = Configuration.Indexing.IndexingActivityTimeoutInSeconds;
+    private readonly int _maxCount = 10;
+
+    private readonly int _runningTimeoutInSeconds = 120; //Configuration.Indexing.IndexingActivityTimeoutInSeconds;
     //private readonly int _lockRefreshPeriodInMilliseconds;
     private readonly int _hearthBeatMilliseconds = 1000;
 
@@ -144,7 +146,7 @@ public class CentralizedIndexingActivityQueue : IDisposable
     private readonly List<IIndexingActivity> _waitingList = new(); // orig: _waitingActivities
     private readonly List<IIndexingActivity> _executingList = new();
     //private Task? _activityLoaderTask;
-    private int _lastExecutedId;
+    private int _lastExecutedId; //UNDONE: CIAQ: Delete _lastExecutedId if not needed.
     private long _workCycle = 0;
 
     private void ControlActivityQueueThread(CancellationToken cancel)
@@ -177,16 +179,88 @@ public class CentralizedIndexingActivityQueue : IDisposable
 
                 LineUpArrivedActivities(_arrivalQueue, _waitingList);
 
-// very simplified
-while (_waitingList.Count > 0)
-{
-    var activityToExecute = _waitingList[0];
-    _waitingList.RemoveAt(0);
-    _executingList.Add(activityToExecute);
-}
-SuperviseExecutions(_executingList, finishedList);
-ManageFinishedActivities(finishedList, _executingList);
-_lastExecutionTime = DateTime.UtcNow;
+                if (true /* !limited */)
+                {
+                    // load
+                    var waitingActivityIds = _waitingList.Select(x => x.Id).ToArray();
+                    var result = _dataStore.LoadExecutableIndexingActivitiesAsync(
+                        _indexingActivityFactory,
+                        _maxCount,
+                        _runningTimeoutInSeconds,
+                        waitingActivityIds, CancellationToken.None).GetAwaiter().GetResult();
+                    var loadedActivities = result.Activities;
+                    var finishedActivityIds = result.FinishedActivitiyIds;
+                    SnTrace.Write(() => $"CIAQ: loaded: {0} ({loadedActivities.Length}), " +
+                                        $"waiting: {string.Join(", ", loadedActivities.Select(la => la.Id))}, " +
+                                        $"finished: {finishedActivityIds.Length}, tasks: {"???"/*_activeTasks*/}");
+
+                    // release finished activities
+                    if (finishedActivityIds.Length > 0)
+                    {
+                        foreach (var finishedActivityId in finishedActivityIds)
+                        {
+                            var finishedActivity = _waitingList.FirstOrDefault(x => x.Id == finishedActivityId);
+                            if (finishedActivity != null)
+                            {
+                                _waitingList.Remove(finishedActivity);
+                                finishedActivity.Finish2();
+                            }
+                        }
+                    }
+
+                    // execute loaded
+                    if (loadedActivities.Any())
+                    {
+                            // execute loaded activities
+                            foreach (var loadedActivity in loadedActivities)
+                            {
+//UNDONE: CIAQ: Setting IsUnprocessedActivity is not implemented
+//if (systemStart)
+//    loadedActivity.IsUnprocessedActivity = true;
+
+                                // If a loaded activity is the same as any of the already waiting activities, we have to
+                                // drop the loaded instance and execute the waiting instance, otherwise the algorithm
+                                // would not notice when the activity is finished and the finish signal is released.
+                                IIndexingActivity executableActivity;
+
+                                var otherWaitingActivity = _waitingList.FirstOrDefault(x => x.Id == loadedActivity.Id);
+                                if (otherWaitingActivity != null)
+                                {
+                                    // Found in the waiting list: drop the loaded one and execute the waiting.
+                                    executableActivity = otherWaitingActivity;
+                                    SnTrace.Write($"CIAQ: Loaded A{loadedActivity.Id} found in the waiting list.");
+                                }
+                                else
+                                {
+                                    // If a loaded activity is not in the waiting list, we have to add it here
+                                    // so that other threads may find it and be able to attach to it.
+                                    _waitingList.Add(loadedActivity);
+                                    executableActivity = loadedActivity;
+                                    SnTrace.Write($"CIAQ: Adding loaded A{loadedActivity.Id} to waiting list.");
+                                }
+throw new NotImplementedException();
+//System.Threading.Tasks.Task.Run(() => Execute(executableActivity));
+                            }
+                    }
+
+                }
+
+                // wait a bit
+                SnTrace.Write(() => $"CIAQT: wait a bit.");
+                Task.Delay(100).Wait();
+
+
+
+//// very simplified
+//while (_waitingList.Count > 0)
+//{
+//    var activityToExecute = _waitingList[0];
+//    _waitingList.RemoveAt(0);
+//    _executingList.Add(activityToExecute);
+//}
+//SuperviseExecutions(_executingList, finishedList);
+//ManageFinishedActivities(finishedList, _executingList);
+//_lastExecutionTime = DateTime.UtcNow;
                 /* from SecurityActivityQueue
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
@@ -237,14 +311,20 @@ _lastExecutionTime = DateTime.UtcNow;
     }
     private void LineUpArrivedActivities(ConcurrentQueue<IIndexingActivity> arrivalQueue, List<IIndexingActivity> waitingList)
     {
-        // Move arrived items to the waiting list
+        // Move arrived items to the waiting list or attach the existing one.
         while (arrivalQueue.Count > 0)
         {
             if (arrivalQueue.TryDequeue(out var arrivedActivity))
-                waitingList.Add(arrivedActivity);
+            {
+                var existing = waitingList.FirstOrDefault(x => x.Id == arrivedActivity.Id);
+                if (existing != null)
+                    existing.Attach(arrivedActivity);
+                else
+                    waitingList.Add(arrivedActivity);
+            }
         }
 
-        waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
+        //waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
         SnTrace.Write(() => $"CIAQT: arrivalSortedList.Count: {waitingList.Count}");
     }
     private void SuperviseExecutions(List<IIndexingActivity> executingList, List<IIndexingActivity> finishedList)
