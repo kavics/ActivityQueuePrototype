@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Configuration;
 using SenseNet.Diagnostics;
 
 namespace CentralizedIndexingActivityQueuePrototype;
@@ -16,9 +17,15 @@ public class CentralizedIndexingActivityQueue : IDisposable
         _indexingActivityFactory = indexingActivityFactory;
     }
 
-    //UNDONE: CIAQ: Dispose
     public void Dispose()
     {
+        if (_timer != null)
+        {
+            _timer.Enabled = false;
+            _timer.Dispose();
+            _timer = null;
+        }
+
         _activityQueueControllerThreadCancellation.Cancel();
         _waitToWorkSignal.Set();
         Task.Delay(100).GetAwaiter().GetResult();
@@ -27,15 +34,74 @@ public class CentralizedIndexingActivityQueue : IDisposable
 
         SnTrace.Write("CIAQ: disposed");
     }
-
-    //UNDONE: CIAQ: StartAsync
-    public async Task StartAsync(CancellationToken cancel)
+    private void Polling()
     {
+        //UNDONE: CIAQ: RefreshLocks
+        //RefreshLocks();
+
+        //UNDONE: CIAQ: DeleteFinishedActivitiesOccasionally
+        //DeleteFinishedActivitiesOccasionally();
+
+        //UNDONE: CIAQ: IsPollingEnabled
+        //if (!IsPollingEnabled())
+        //    return;
+
+        if ((DateTime.UtcNow - _lastExecutionTime) > _healthCheckPeriod)
+        {
+            try
+            {
+                //UNDONE: CIAQ: DisablePolling
+                //DisablePolling();
+                SnTrace.Write("CIAQ: polling timer beats.");
+                _waitToWorkSignal.Set();
+                // original: ExecuteActivities(null, false);
+            }
+            finally
+            {
+                //UNDONE: CIAQ: EnablePolling
+                //EnablePolling();
+            }
+        }
+    }
+
+    public async Task StartAsync(TextWriter? consoleOut, CancellationToken cancel)
+    {
+        using var op = SnTrace.StartOperation("CIAQ: STARTUP.");
+
         // Start worker thread
         _activityQueueControllerThreadCancellation = new CancellationTokenSource();
         _activityQueueThreadController = Task.Factory.StartNew(
             () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
-            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        //UNDONE: CIAQ: executing unprocessed activities in system start sequence.
+        // ...
+
+        // every period starts now
+        _lastLockRefreshTime = DateTime.UtcNow;
+        _lastExecutionTime = DateTime.UtcNow;
+        _lastDeleteFinishedTime = DateTime.UtcNow;
+
+        _timer = new System.Timers.Timer(_hearthBeatMilliseconds);
+        _timer.Elapsed += Timer_Elapsed;
+        _timer.Disposed += Timer_Disposed;
+        _timer.Enabled = true;
+
+        var msg = $"CIAQ: polling timer started. Heartbeat: {_hearthBeatMilliseconds} milliseconds";
+        SnTrace.IndexQueue.Write(msg);
+        consoleOut?.WriteLine(msg);
+
+        op.Successful = true;
+    }
+    private void Timer_Disposed(object? sender, EventArgs e)
+    {
+        _timer.Elapsed -= Timer_Elapsed;
+        _timer.Disposed -= Timer_Disposed;
+    }
+    private void Timer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        Polling();
     }
 
     // Activity arrival
@@ -49,20 +115,40 @@ public class CentralizedIndexingActivityQueue : IDisposable
         return activity.CreateTaskForWait();
     }
 
+
+    //private readonly int _maxCount = 10;
+    //private readonly int _runningTimeoutInSeconds = Configuration.Indexing.IndexingActivityTimeoutInSeconds;
+    //private readonly int _lockRefreshPeriodInMilliseconds;
+    private readonly int _hearthBeatMilliseconds = 1000;
+
+    //private readonly TimeSpan _waitingPollingPeriod = TimeSpan.FromSeconds(2);
+    private readonly TimeSpan _healthCheckPeriod = TimeSpan.FromMinutes(2);
+    //private readonly TimeSpan _deleteFinishedPeriod = TimeSpan.FromMinutes(23);
+    //UNDONE: CIAQ: ActiveTaskLimit (used in conditional expressions: ... && _activeTasks < ActiveTaskLimit)
+    //private const int ActiveTaskLimit = 43;
+
+    private System.Timers.Timer _timer;
+    private DateTime _lastExecutionTime;
+    private DateTime _lastLockRefreshTime;
+    private DateTime _lastDeleteFinishedTime;
+    //UNDONE: CIAQ: _activeTasks (used in conditional expressions: ... && _activeTasks < ActiveTaskLimit)
+    //private volatile int _activeTasks;
+    //private int _pollingBlockerCounter;
+
+
+
+    /* =================================================================================================== */
+
     private readonly AutoResetEvent _waitToWorkSignal = new AutoResetEvent(false);
     private readonly ConcurrentQueue<IIndexingActivity> _arrivalQueue = new();
     private readonly List<IIndexingActivity> _waitingList = new(); // orig: _waitingActivities
     private readonly List<IIndexingActivity> _executingList = new();
     //private Task? _activityLoaderTask;
+    private int _lastExecutedId;
     private long _workCycle = 0;
 
-    private int _lastExecutedId;
-    //private List<int> _gaps = new();
-    //private CompletionState _completionState;
-
-    /* =================================================================================================== */
-
     private void ControlActivityQueueThread(CancellationToken cancel)
+    // original: private int ExecuteActivities(IndexingActivityBase waitingActivity, bool systemStart)
     {
         SnTrace.Write("CIAQT: started");
         var finishedList = new List<IIndexingActivity>(); // temporary
@@ -100,8 +186,7 @@ while (_waitingList.Count > 0)
 }
 SuperviseExecutions(_executingList, finishedList);
 ManageFinishedActivities(finishedList, _executingList);
-
-
+_lastExecutionTime = DateTime.UtcNow;
                 /* from SecurityActivityQueue
                 // Iterate while the waiting list is not empty or should wait for arrival the next activity.
                 // Too early-arrived activities remain in the list (activity.Id > lastStartedId + 1)
@@ -122,7 +207,7 @@ ManageFinishedActivities(finishedList, _executingList);
                     {
                         // Load the missed out activities from database or skip this if it is happening right now.
                         _activityLoaderTask ??= Task.Run(() => LoadLastActivities(lastStartedId + 1, cancel));
-                        break; //UNDONE: SAQ: are you sure to exit here?
+                        break; //UNDONE: CIAQ: are you sure to exit here?
                     }
                 }
 
@@ -134,7 +219,8 @@ ManageFinishedActivities(finishedList, _executingList);
                 ManageFinishedActivities(finishedList, _executingList);
 
                 // End of cycle
-                SnTrace.Write(
+                SnTrace.Write(() => $"SAQT: wait a bit.");
+                Task.Delay(1).Wait();
                 */
             }
             catch (Exception e)

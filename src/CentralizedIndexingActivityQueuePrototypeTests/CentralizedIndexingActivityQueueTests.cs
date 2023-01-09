@@ -16,7 +16,7 @@ public class CentralizedIndexingActivityQueueTests
         public void Clear() { Lines.Clear(); }
     }
 
-    private TestTracer? _testTracer;
+    private TestTracer _testTracer;
 
     public TestContext TestContext { get; set; }
 
@@ -56,7 +56,7 @@ public class CentralizedIndexingActivityQueueTests
 
         try
         {
-            await activityQueue.StartAsync(CancellationToken.None);
+            await activityQueue.StartAsync(null, CancellationToken.None);
 
             // ACTION
             await populator.CreateActivityAndExecuteAsync(IndexingActivityType.AddDocument, CancellationToken.None);
