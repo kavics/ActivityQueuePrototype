@@ -187,11 +187,13 @@ public class SecurityActivityQueue : IDisposable
                     var activityToExecute = _waitingList[0];
                     if (!activityToExecute.IsUnprocessedActivity && activityToExecute.Id <= lastStartedId) // already arrived or executed
                     {
-                        AttachOrIgnore(activityToExecute, _waitingList, _executingList);
+                        _waitingList.RemoveAt(0);
+                        AttachOrIgnore(activityToExecute, _executingList);
                     }
                     else if (activityToExecute.IsUnprocessedActivity || activityToExecute.Id == lastStartedId + 1) // arrived in order
                     {
-                        lastStartedId = ExecuteOrChain(activityToExecute, _waitingList, _executingList);
+                        _waitingList.RemoveAt(0);
+                        lastStartedId = ExecuteOrChain(activityToExecute, _executingList);
                     }
                     else
                     {
@@ -237,9 +239,8 @@ public class SecurityActivityQueue : IDisposable
         waitingList.Sort((x, y) => x.Id.CompareTo(y.Id));
         SnTrace.Write(() => $"SAQT: arrivalSortedList.Count: {waitingList.Count}");
     }
-    private void AttachOrIgnore(SecurityActivity activity, List<SecurityActivity> waitingList, List<SecurityActivity> executingList)
+    private void AttachOrIgnore(SecurityActivity activity, List<SecurityActivity> executingList)
     {
-        waitingList.RemoveAt(0);
         var existing = GetAllFromChains(executingList)
             .FirstOrDefault(x => x.Id == activity.Id);
         if (existing != null)
@@ -255,10 +256,8 @@ public class SecurityActivityQueue : IDisposable
             activity.StartFinalizationTask();
         }
     }
-    private int ExecuteOrChain(SecurityActivity activity, List<SecurityActivity> waitingList, List<SecurityActivity> executingList)
+    private int ExecuteOrChain(SecurityActivity activity, List<SecurityActivity> executingList)
     {
-        waitingList.RemoveAt(0);
-
         // Discover dependencies
         foreach (var activityUnderExecution in GetAllFromChains(executingList))
             if (activity.ShouldWaitFor(activityUnderExecution))
