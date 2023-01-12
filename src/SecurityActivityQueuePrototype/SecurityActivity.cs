@@ -62,6 +62,8 @@ public class SecurityActivity
     }
     internal void StartExecutionTask()
     {
+        //UNDONE: Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
+
         _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
         _executionTask.Start();
     }
