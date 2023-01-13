@@ -57,14 +57,14 @@ public class SecurityActivity
 
     internal Task CreateTaskForWait()
     {
-        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
+        _finalizationTask = new Task(() => { /* do nothing */ }/*, TaskCreationOptions.LongRunning*/); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
     internal void StartExecutionTask()
     {
         //UNDONE: Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
 
-        _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
+        _executionTask = new Task(ExecuteInternal/*, TaskCreationOptions.LongRunning*/);
         _executionTask.Start();
     }
     internal void StartFinalizationTask()
@@ -72,7 +72,7 @@ public class SecurityActivity
         _finalizationTask?.Start();
     }
 
-    internal TaskStatus GetExecutionTaskStatus() => _executionTask?.Status ?? TaskStatus.Created;
+    internal TaskStatus? GetExecutionTaskStatus() => _executionTask?.Status;
 
     internal bool ShouldWaitFor(SecurityActivity olderActivity) => _checkDependencyCallback?.Invoke(this, olderActivity) ?? false;
 

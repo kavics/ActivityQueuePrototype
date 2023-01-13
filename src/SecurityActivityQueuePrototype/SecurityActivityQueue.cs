@@ -290,12 +290,16 @@ public class SecurityActivityQueue : IDisposable
         {
             switch (activity.GetExecutionTaskStatus())
             {
+                // not created
+                case null:
+                    SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
+                    activity.StartExecutionTask();
+                    break;
                 // pending
                 case TaskStatus.Created:
                 case TaskStatus.WaitingForActivation:
                 case TaskStatus.WaitingToRun:
-                    SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
-                    activity.StartExecutionTask();
+                    SnTrace.Write(() => $"SAQT: executionTaskState: #SA{activity.Key}: {activity.GetExecutionTaskStatus()}");
                     break;
 
                 // executing
