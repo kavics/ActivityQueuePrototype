@@ -57,14 +57,14 @@ public class SecurityActivity
 
     internal Task CreateTaskForWait()
     {
-        _finalizationTask = new Task(() => { /* do nothing */ }/*, TaskCreationOptions.LongRunning*/); //UNDONE: ?? avoid a lot of LongRunning
+        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
     internal void StartExecutionTask()
     {
         //UNDONE: Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
 
-        _executionTask = new Task(ExecuteInternal/*, TaskCreationOptions.LongRunning*/);
+        _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
         _executionTask.Start();
     }
     internal void StartFinalizationTask()
