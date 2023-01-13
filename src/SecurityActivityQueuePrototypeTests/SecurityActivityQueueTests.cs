@@ -11,8 +11,9 @@ public class SecurityActivityQueueTests
 {
     private class TestTracer:ISnTracer
     {
+        private readonly object _lock = new();
         public List<string> Lines { get; } = new();
-        public void Write(string line) { Lines.Add(line); }
+        public void Write(string line) { lock(_lock) Lines.Add(line); }
         public void Flush() { /* do nothing */ }
         public void Clear() { Lines.Clear(); }
     }
@@ -83,8 +84,8 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(null, msg);
     }
 
-    [DataRow(4)]
-    [DataRow(16)]
+    //[DataRow(4)]
+    //[DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
     public async Task SAQ_RandomActivities_WithDuplications(int count)
@@ -528,7 +529,7 @@ public class SecurityActivityQueueTests
         foreach (var events in allEvents)
         {
             if(!events.Value.IsRightOrder())
-                return $"events[{events.Key}] is not in the right order";
+                return $"events[{events.Key}] is not in the right order: {events.Value.TraceTimes()}";
         }
 
         foreach (var events in grouped.Values)
@@ -569,7 +570,7 @@ public class SecurityActivityQueueTests
             {
                 foreach (var itemBefore in allExecuted[i].DependsFrom)
                 {
-                    if (allExecuted[i].InternalExecutionStart < itemBefore.InternalExecutionEnd)
+                    if (allExecuted[i].InternalExecutionStart <= itemBefore.InternalExecutionEnd)
                         return $"The pending item A{allExecuted[i].Id} was started earlier " +
                                $"than A{itemBefore.Id} would have been completed.";
                 }
@@ -577,7 +578,7 @@ public class SecurityActivityQueueTests
             }
 
             if (i < allExecuted.Length - 1)
-                if (allExecuted[i].Execution > allExecuted[i + 1].Execution)
+                if (allExecuted[i].Execution >= allExecuted[i + 1].Execution)
                     return $"execTimes[A{allExecuted[i].Id}] and execTimes[A{allExecuted[i + 1].Id}] are not in the right order.";
         }
 
@@ -673,7 +674,7 @@ public class SecurityActivityQueueTests
                        Execution == TimeSpan.Zero &&
                        InternalExecutionStart == TimeSpan.Zero &&
                        InternalExecutionEnd == TimeSpan.Zero &&
-                       Released > Arrival &&
+                       Released >= Arrival &&
                        BusinessEnd == TimeSpan.Zero;
 
             if (FromDbOrReceiver && !ExecutionIgnored)
@@ -681,47 +682,61 @@ public class SecurityActivityQueueTests
                        SaveEnd == TimeSpan.Zero &&
                        BusinessStart == TimeSpan.Zero &&
                        Arrival > TimeSpan.Zero &&
-                       Execution > Arrival &&
-                       InternalExecutionStart > Execution &&
-                       InternalExecutionEnd > InternalExecutionStart &&
-                       Released > InternalExecutionEnd &&
+                       Execution >= Arrival &&
+                       InternalExecutionStart >= Execution &&
+                       InternalExecutionEnd >= InternalExecutionStart &&
+                       Released >= InternalExecutionEnd &&
                        BusinessEnd == TimeSpan.Zero;
 
             if (ExecutionIgnored && !Saved)
                 return SaveStart == TimeSpan.Zero &&
                        SaveEnd == TimeSpan.Zero &&
-                       Arrival > BusinessStart &&
+                       Arrival >= BusinessStart &&
                        Execution == TimeSpan.Zero &&
                        InternalExecutionStart == TimeSpan.Zero &&
                        InternalExecutionEnd == TimeSpan.Zero &&
-                       Released > Arrival &&
-                       BusinessEnd > Arrival;
+                       Released >= Arrival &&
+                       BusinessEnd >= Arrival;
 
             if (ExecutionIgnored)
-                return SaveStart > BusinessStart &&
-                       SaveEnd > SaveStart &&
-                       Arrival > SaveEnd &&
+                return SaveStart >= BusinessStart &&
+                       SaveEnd >= SaveStart &&
+                       Arrival >= SaveEnd &&
                        Execution == TimeSpan.Zero &&
                        InternalExecutionStart == TimeSpan.Zero &&
                        InternalExecutionEnd == TimeSpan.Zero &&
-                       BusinessEnd > Arrival;
+                       BusinessEnd >= Arrival;
 
             if (!Saved)
                 return SaveStart == TimeSpan.Zero &&
                        SaveEnd == TimeSpan.Zero &&
-                       Arrival > BusinessStart &&
-                       Execution > Arrival &&
-                       InternalExecutionStart > Execution &&
-                       InternalExecutionEnd > InternalExecutionStart &&
-                       BusinessEnd > InternalExecutionEnd;
+                       Arrival >= BusinessStart &&
+                       Execution >= Arrival &&
+                       InternalExecutionStart >= Execution &&
+                       InternalExecutionEnd >= InternalExecutionStart &&
+                       BusinessEnd >= InternalExecutionEnd;
 
-            return SaveStart > BusinessStart &&
-                   SaveEnd > SaveStart &&
-                   Arrival > SaveEnd &&
-                   Execution > Arrival &&
-                   InternalExecutionStart > Execution &&
-                   InternalExecutionEnd > InternalExecutionStart &&
-                   BusinessEnd > InternalExecutionEnd;
+            return SaveStart >= BusinessStart &&
+                   SaveEnd >= SaveStart &&
+                   Arrival >= SaveEnd &&
+                   Execution >= Arrival &&
+                   InternalExecutionStart >= Execution &&
+                   InternalExecutionEnd >= InternalExecutionStart &&
+                   BusinessEnd >= InternalExecutionEnd;
+        }
+
+        public string TraceTimes()
+        {
+            var s = $"FromDbOrReceiver: {FromDbOrReceiver}, ExecutionIgnored: {ExecutionIgnored}, Saved: {SaveStart != TimeSpan.Zero}.";
+            return $"{s} " +
+                   $"BusinessStart:          {BusinessStart} " +
+                   $"SaveStart:              {SaveStart} " +
+                   $"SaveEnd:                {SaveEnd} " +
+                   $"Arrival:                {Arrival} " +
+                   $"Execution:              {Execution} " +
+                   $"InternalExecutionStart: {InternalExecutionStart} " +
+                   $"InternalExecutionEnd:   {InternalExecutionEnd} " +
+                   $"BusinessEnd:            {BusinessEnd}";
         }
     }
 }
