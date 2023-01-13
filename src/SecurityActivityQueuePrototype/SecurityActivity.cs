@@ -1,5 +1,4 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Newtonsoft.Json;
 using SenseNet.Diagnostics;
 
@@ -64,8 +63,14 @@ public class SecurityActivity
     {
         //UNDONE: Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
 
-        _executionTask = new Task(ExecuteInternal, TaskCreationOptions.LongRunning);
+        _executionTask = new Task(ExecuteInternal, CancellationToken.None, TaskCreationOptions.LongRunning);
         _executionTask.Start();
+    }
+    internal Task StartExecutionTaskAsync(CancellationToken cancel)
+    {
+        _executionTask = new Task(ExecuteInternal, cancel, TaskCreationOptions.LongRunning);
+        _executionTask.Start();
+        return _executionTask;
     }
     internal void StartFinalizationTask()
     {
@@ -82,7 +87,7 @@ public class SecurityActivity
         return context.ActivityQueue.ExecuteAsync(this, cancel);
     }
 
-    internal void ExecuteInternal()
+    internal void ExecuteInternal() //UNDONE: SAQ: void ExecuteInternal() ==> Task ExecuteInternalAsync(CancellationToken)
     {
         try
         {

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using SenseNet.Diagnostics;
 
@@ -205,7 +206,7 @@ public class SecurityActivityQueue : IDisposable
 
                 // Enumerate parallel-executable activities. Dependencies are attached or chained.
                 // (activity.WaitingFor.Count == 0)
-                SuperviseExecutions(_executingList, finishedList); // manage pending, execution and finished states
+                SuperviseExecutions(_executingList, finishedList, cancel); // manage pending, execution and finished states
 
                 // Releases starter threads with attachments and activates dependent items
                 ManageFinishedActivities(finishedList, _executingList);
@@ -284,39 +285,28 @@ public class SecurityActivityQueue : IDisposable
         // Unlock loading
         _activityLoaderTask = null;
     }
-    private void SuperviseExecutions(List<SecurityActivity> executingList, List<SecurityActivity> finishedList)
+    private readonly TaskStatus?[] _finishedTaskStates = {TaskStatus.RanToCompletion, TaskStatus.Canceled, TaskStatus.Faulted};
+    private void SuperviseExecutions(List<SecurityActivity> executingList, List<SecurityActivity> finishedList, CancellationToken cancel)
     {
-        foreach (var activity in executingList)
+        // Considered states:
+        // - not created: null
+        // - pending: Created, WaitingForActivation, WaitingToRun
+        // - finished: RanToCompletion, Canceled, Faulted
+        // - executing: Running, WaitingForChildrenToComplete
+        var toStart = executingList
+            .Where(x => x.GetExecutionTaskStatus() == null)
+            .ToArray();
+        var toRelease = executingList
+            .Where(x => _finishedTaskStates.Contains(x.GetExecutionTaskStatus()))
+            .ToArray();
+        foreach (var activityToStart in toStart)
         {
-            switch (activity.GetExecutionTaskStatus())
-            {
-                // not created
-                case null:
-                    SnTrace.Write(() => $"SAQT: start execution: #SA{activity.Key}");
-                    activity.StartExecutionTask();
-                    break;
-                // pending
-                case TaskStatus.Created:
-                case TaskStatus.WaitingForActivation:
-                case TaskStatus.WaitingToRun:
-                    SnTrace.Write(() => $"SAQT: executionTaskState: #SA{activity.Key}: {activity.GetExecutionTaskStatus()}");
-                    break;
-
-                // executing
-                case TaskStatus.Running:
-                case TaskStatus.WaitingForChildrenToComplete:
-                    // do nothing?
-                    break;
-
-                // finished
-                case TaskStatus.RanToCompletion:
-                case TaskStatus.Canceled:
-                case TaskStatus.Faulted:
-                    finishedList.Add(activity);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+            SnTrace.Write(() => $"SAQT: start execution: #SA{activityToStart.Key}");
+            activityToStart.StartExecutionTaskAsync(cancel);
+        }
+        foreach (var finishedActivity in toRelease)
+        {
+            finishedList.Add(finishedActivity);
         }
     }
     private void ManageFinishedActivities(List<SecurityActivity> finishedList, List<SecurityActivity> executingList)
