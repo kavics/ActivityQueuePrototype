@@ -59,18 +59,12 @@ public class SecurityActivity
         _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
-    internal void StartExecutionTask()
+    internal void StartExecutionTask(CancellationToken cancel)
     {
-        //UNDONE: Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
-
-        _executionTask = new Task(ExecuteInternal, CancellationToken.None, TaskCreationOptions.LongRunning);
+        //UNDONE: SAQ: ?? Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
+        //UNDONE: SAQ: ?? avoid a lot of LongRunning
+        _executionTask = new Task(() => ExecuteInternalAsync(cancel), cancel, TaskCreationOptions.LongRunning);
         _executionTask.Start();
-    }
-    internal Task StartExecutionTaskAsync(CancellationToken cancel)
-    {
-        _executionTask = new Task(ExecuteInternal, cancel, TaskCreationOptions.LongRunning);
-        _executionTask.Start();
-        return _executionTask;
     }
     internal void StartFinalizationTask()
     {
@@ -87,7 +81,30 @@ public class SecurityActivity
         return context.ActivityQueue.ExecuteAsync(this, cancel);
     }
 
-    internal void ExecuteInternal() //UNDONE: SAQ: void ExecuteInternal() ==> Task ExecuteInternalAsync(CancellationToken)
+    //internal void ExecuteInternal()
+    //{
+    //    try
+    //    {
+    //        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
+    //        if (_executionCallback != null)
+    //        {
+    //            _executionCallback(this);
+    //            op.Successful = true;
+    //            return;
+    //        }
+
+    //        Task.Delay(_delay).GetAwaiter().GetResult();
+    //        op.Successful = true;
+    //    }
+    //    catch (Exception e)
+    //    {
+    //        ExecutionException = e;
+
+    //        // we log this here, because if the activity is not waited for later than the exception would not be logged
+    //        SnTrace.WriteError(() => $"Error during security activity execution. SA{Id} {e}");
+    //    }
+    //}
+    internal async Task ExecuteInternalAsync(CancellationToken cancel)
     {
         try
         {
@@ -99,7 +116,7 @@ public class SecurityActivity
                 return;
             }
 
-            Task.Delay(_delay).GetAwaiter().GetResult();
+            await Task.Delay(_delay, cancel).ConfigureAwait(false);
             op.Successful = true;
         }
         catch (Exception e)

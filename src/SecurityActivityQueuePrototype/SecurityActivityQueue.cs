@@ -299,10 +299,11 @@ public class SecurityActivityQueue : IDisposable
         var toRelease = executingList
             .Where(x => _finishedTaskStates.Contains(x.GetExecutionTaskStatus()))
             .ToArray();
+
         foreach (var activityToStart in toStart)
         {
             SnTrace.Write(() => $"SAQT: start execution: #SA{activityToStart.Key}");
-            activityToStart.StartExecutionTaskAsync(cancel);
+            activityToStart.StartExecutionTask(cancel);
         }
         foreach (var finishedActivity in toRelease)
         {
