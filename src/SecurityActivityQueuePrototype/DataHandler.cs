@@ -54,6 +54,7 @@ public class DataHandler
         }
 
         await Task.Delay(Rng.Next(20, 50), cancel).ConfigureAwait(false);
+        SnTrace.Write($"DataHandler: loaded activities: {result.Length}");
         op.Successful = true;
         return result;
     }

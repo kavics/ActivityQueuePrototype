@@ -1,7 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using SenseNet.Diagnostics;
 
 namespace SecurityActivityQueuePrototype;
@@ -43,13 +40,19 @@ public class CompletionState
 public class SecurityActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
-    private CancellationTokenSource _mainCancellationSource;
-    private CancellationToken _mainCancellationToken;
+    private readonly CancellationTokenSource _mainCancellationSource;
+    private readonly CancellationToken _mainCancellationToken;
     private Task _mainThreadControllerTask;
 
     public SecurityActivityQueue(DataHandler dataHandler)
     {
         _dataHandler = dataHandler;
+
+        // initialize non-nullable fields
+        _mainCancellationSource = new CancellationTokenSource();
+        _mainCancellationToken = _mainCancellationSource.Token;
+        _mainThreadControllerTask = Task.CompletedTask;
+        _completionState = new CompletionState();
     }
 
     public void Dispose()
@@ -73,26 +76,29 @@ public class SecurityActivityQueue : IDisposable
         var dbState = await _dataHandler.LoadCompletionStateAsync(cancel);
         await StartAsync(dbState.CompletionState, dbState.LastDatabaseId, cancel);
     }
-    public async Task StartAsync(CompletionState uncompleted, int lastDatabaseId, CancellationToken cancel)
+    public async Task StartAsync(CompletionState? uncompleted, int lastDatabaseId, CancellationToken cancel)
     {
-        _lastExecutedId = uncompleted.LastActivityId;
+        _lastExecutedId = uncompleted?.LastActivityId ?? 0;
         _gaps.Clear();
-        if(uncompleted.Gaps != null)
+        if(uncompleted?.Gaps != null)
             _gaps.AddRange(uncompleted.Gaps);
         _completionState = new CompletionState { LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray() };
 
         // Start worker thread
-        _mainCancellationSource = new CancellationTokenSource();
-        _mainCancellationToken = _mainCancellationSource.Token;
         _mainThreadControllerTask = Task.Factory.StartNew(
             () => ControlActivityQueueThread(_mainCancellationToken),
             _mainCancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
+        await Task.Delay(1, cancel);
+
+        //UNDONE: SAQ: wait for finishing all unprocessed activities or not?
         await ExecuteUnprocessedActivitiesAtStartAsync(_lastExecutedId, _gaps, lastDatabaseId, cancel);
     }
-    private async Task ExecuteUnprocessedActivitiesAtStartAsync(int lastExecutedId, List<int> gaps, int lastDatabaseId, CancellationToken cancel)
+    // ReSharper disable once UnusedParameter.Local
+    private Task ExecuteUnprocessedActivitiesAtStartAsync(int lastExecutedId, List<int> gaps, int lastDatabaseId, CancellationToken cancel)
     {
         var count = 0;
+        SnTrace.Write($"Discovering unprocessed security activities");
         if (gaps.Any())
         {
             var loadedActivities = new SecurityActivityLoader(gaps, true, _dataHandler);
@@ -115,6 +121,10 @@ public class SecurityActivityQueue : IDisposable
                 count++;
             }
         }
+        //SnLog.WriteInformation(string.Format(EventMessage.Information.ExecutingUnprocessedActivitiesFinished, count),
+        SnTrace.Write($"Executing unprocessed security activities ({count}).");
+
+        return Task.CompletedTask;
     }
 
     // Activity arrival
@@ -141,10 +151,10 @@ public class SecurityActivityQueue : IDisposable
     private readonly List<SecurityActivity> _waitingList = new();
     private readonly List<SecurityActivity> _executingList = new();
     private Task? _activityLoaderTask;
-    private long _workCycle = 0;
+    private long _workCycle;
 
     private int _lastExecutedId;
-    private List<int> _gaps = new();
+    private readonly List<int> _gaps = new();
     private CompletionState _completionState;
 
     public CompletionState GetCompletionState()
@@ -168,7 +178,8 @@ public class SecurityActivityQueue : IDisposable
                 // Wait if there is nothing to do
                 if (_waitingList.Count == 0 && _executingList.Count == 0)
                 {
-                    SnTrace.Write(() => $"SAQT: waiting for arrival #SA{lastStartedId + 1}");
+                    var id = lastStartedId;
+                    SnTrace.Write(() => $"SAQT: waiting for arrival #SA{id + 1}");
                     _waitToWorkSignal.WaitOne();
                 }
 
@@ -203,7 +214,8 @@ public class SecurityActivityQueue : IDisposable
                     else
                     {
                         // Load the missed out activities from database or skip this if it is happening right now.
-                        _activityLoaderTask ??= Task.Run(() => LoadLastActivities(lastStartedId + 1, cancel));
+                        var id = lastStartedId;
+                        _activityLoaderTask ??= Task.Run(() => LoadLastActivities(id + 1, cancel));
                         break; //UNDONE: SAQ: are you sure to exit here?
                     }
                 }
@@ -307,8 +319,11 @@ public class SecurityActivityQueue : IDisposable
         foreach (var activityToStart in toStart)
         {
             SnTrace.Write(() => $"SAQT: start execution: #SA{activityToStart.Key}");
-            activityToStart.StartExecutionTask(cancel);
+            // Start the activity's execution task in an async way to ensure separate tasks for each one
+            // otherwise, separation would only occur at first awaited instructions of each implementation.
+            Task.Run(() => activityToStart.StartExecutionTask(), cancel);
         }
+
         foreach (var finishedActivity in toRelease)
         {
             finishedList.Add(finishedActivity);

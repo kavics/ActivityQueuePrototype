@@ -11,13 +11,12 @@ public class SecurityActivity
 
     [field: NonSerialized, JsonIgnore] private readonly int _delay; // only for the prototype
 
-    [field: NonSerialized, JsonIgnore] private Task _executionTask;
-    [field: NonSerialized, JsonIgnore] private Task _finalizationTask;
+    [field: NonSerialized, JsonIgnore] private Task? _executionTask;
+    [field: NonSerialized, JsonIgnore] private Task? _finalizationTask;
 
     [field: NonSerialized, JsonIgnore] private Func<SecurityActivity, SecurityActivity, bool>? _checkDependencyCallback; // only for the prototype
     [field: NonSerialized, JsonIgnore] private Action<SecurityActivity>? _executionCallback; // only for the prototype
 
-    [field: NonSerialized, JsonIgnore] private Context Context { get; set; }
     /// <summary>
     /// Gets or sets whether the activity is loaded from the database.
     /// </summary>
@@ -44,7 +43,7 @@ public class SecurityActivity
 
     public SecurityActivity(int id, int delay,
         Func<SecurityActivity, SecurityActivity, bool>? checkDependencyCallback = null,
-        Action<SecurityActivity> executionCallback = null)
+        Action<SecurityActivity>? executionCallback = null)
     {
         Interlocked.Increment(ref _objectId);
         Key = $"{id}-{_objectId}";
@@ -60,13 +59,9 @@ public class SecurityActivity
         _finalizationTask = new Task(() => { /* do nothing */ }, CancellationToken, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
-    internal void StartExecutionTask(CancellationToken cancel)
+    internal void StartExecutionTask()
     {
-        //UNDONE: SAQ: ?? Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
-        //UNDONE: SAQ: ?? avoid a lot of LongRunning
-        _executionTask = new Task(() => ExecuteInternalAsync(this.CancellationToken).GetAwaiter().GetResult(),
-            cancel, TaskCreationOptions.LongRunning);
-        _executionTask.Start();
+        _executionTask = ExecuteInternalAsync(CancellationToken);
     }
     internal void StartFinalizationTask()
     {
@@ -77,35 +72,8 @@ public class SecurityActivity
 
     internal bool ShouldWaitFor(SecurityActivity olderActivity) => _checkDependencyCallback?.Invoke(this, olderActivity) ?? false;
 
-    public Task ExecuteAsync(Context context, CancellationToken cancel)
-    {
-        Context = context;
-        return context.ActivityQueue.ExecuteAsync(this, cancel);
-    }
+    public Task ExecuteAsync(Context context, CancellationToken cancel) => context.ActivityQueue.ExecuteAsync(this, cancel);
 
-    //internal void ExecuteInternal()
-    //{
-    //    try
-    //    {
-    //        using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
-    //        if (_executionCallback != null)
-    //        {
-    //            _executionCallback(this);
-    //            op.Successful = true;
-    //            return;
-    //        }
-
-    //        Task.Delay(_delay).GetAwaiter().GetResult();
-    //        op.Successful = true;
-    //    }
-    //    catch (Exception e)
-    //    {
-    //        ExecutionException = e;
-
-    //        // we log this here, because if the activity is not waited for later than the exception would not be logged
-    //        SnTrace.WriteError(() => $"Error during security activity execution. SA{Id} {e}");
-    //    }
-    //}
     internal async Task ExecuteInternalAsync(CancellationToken cancel)
     {
         try

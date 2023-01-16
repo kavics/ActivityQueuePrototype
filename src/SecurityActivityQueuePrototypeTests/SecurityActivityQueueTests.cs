@@ -498,7 +498,7 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(TaskStatus.RanToCompletion, tasks[0].Status);
         Assert.AreEqual(TaskStatus.Canceled, tasks[1].Status);
         Assert.AreEqual(TaskStatus.RanToCompletion, tasks[2].Status);
-        var trace = _testTracer.Lines;
+        var trace = _testTracer.Lines.ToArray();
 
         Assert.IsTrue(trace.Any(x => x.Contains("A security activity execution CANCELED. #SA2")));
 
