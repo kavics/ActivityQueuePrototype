@@ -63,7 +63,8 @@ public class SecurityActivity
     {
         //UNDONE: SAQ: ?? Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
         //UNDONE: SAQ: ?? avoid a lot of LongRunning
-        _executionTask = new Task(() => ExecuteInternalAsync(cancel), cancel, TaskCreationOptions.LongRunning);
+        _executionTask = new Task(() => ExecuteInternalAsync(cancel).GetAwaiter().GetResult(),
+            cancel, TaskCreationOptions.LongRunning);
         _executionTask.Start();
     }
     internal void StartFinalizationTask()

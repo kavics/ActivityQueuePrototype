@@ -84,8 +84,8 @@ public class SecurityActivityQueueTests
         Assert.AreEqual(null, msg);
     }
 
-    //[DataRow(4)]
-    //[DataRow(16)]
+    [DataRow(4)]
+    [DataRow(16)]
     [DataRow(100)]
     [DataTestMethod]
     public async Task SAQ_RandomActivities_WithDuplications(int count)
