@@ -465,6 +465,77 @@ public class SecurityActivityQueueTests
         Assert.AreEqual("3(2)", state.ToString());
     }
 
+    [TestMethod]
+    public async Task SAQ_AsyncExecution_Cancellation_One()
+    {
+        var dataHandler = new DataHandler() { EnableLoad = false };
+        var activityQueue = new SecurityActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+        var cancel = cancellation.Token;
+        var cancellationActive = new CancellationTokenSource();
+        var cancelActive = cancellationActive.Token;
+
+        var tasks = new[]
+        {
+            App.ExecuteActivity(new SecurityActivity(1, 0), context, cancel),
+            App.ExecuteActivity(new SecurityActivity(2, 60_000), context, cancelActive),
+            App.ExecuteActivity(new SecurityActivity(3, 0), context, cancel),
+        };
+
+        await Task.Delay(100, cancel);
+        Assert.AreEqual(TaskStatus.RanToCompletion, tasks[0].Status);
+        Assert.AreEqual(TaskStatus.WaitingForActivation, tasks[1].Status);
+        Assert.AreEqual(TaskStatus.RanToCompletion, tasks[2].Status);
+
+        // ACTION
+        cancellationActive.Cancel();
+
+        // ASSERT
+        await Task.Delay(200, cancel);
+        Assert.AreEqual(TaskStatus.RanToCompletion, tasks[0].Status);
+        Assert.AreEqual(TaskStatus.Canceled, tasks[1].Status);
+        Assert.AreEqual(TaskStatus.RanToCompletion, tasks[2].Status);
+        var trace = _testTracer.Lines;
+
+        Assert.IsTrue(trace.Any(x => x.Contains("A security activity execution CANCELED. #SA2")));
+
+        activityQueue.Dispose();
+        //await Task.WhenAll(tasks);
+        //await Task.Delay(100, cancel);
+    }
+    [TestMethod]
+    public async Task SAQ_AsyncExecution_Cancellation_All()
+    {
+        var dataHandler = new DataHandler() { EnableLoad = false };
+        var activityQueue = new SecurityActivityQueue(dataHandler);
+        await activityQueue.StartAsync(CancellationToken.None);
+
+        var context = new Context(activityQueue);
+        var cancellation = new CancellationTokenSource();
+        var cancel = cancellation.Token;
+
+        var tasks = new Task[10];
+        for (int i = 0; i < tasks.Length; i++)
+            tasks[i] = App.ExecuteActivity(new SecurityActivity(i + 1, 60_000), context, cancel);
+
+        await Task.Delay(100, cancel);
+        foreach (var task in tasks)
+            Assert.AreEqual(TaskStatus.WaitingForActivation, task.Status);
+
+        // ACTION
+        activityQueue.Dispose();
+
+        // ASSERT
+        await Task.Delay(200, cancel);
+        foreach (var task in tasks)
+            Assert.AreEqual(TaskStatus.Canceled, task.Status);
+        var trace = _testTracer.Lines;
+        for (int i = 0; i < tasks.Length; i++)
+            Assert.IsTrue(trace.Any(x => x.Contains($"A security activity execution CANCELED. #SA{i + 1}")));
+    }
 
     private string CheckTrace(List<string> trace, int count)
     {

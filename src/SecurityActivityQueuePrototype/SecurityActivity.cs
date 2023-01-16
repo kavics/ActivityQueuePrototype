@@ -35,6 +35,7 @@ public class SecurityActivity
     [field: NonSerialized, JsonIgnore] internal List<SecurityActivity> WaitingForMe { get; private set; } = new List<SecurityActivity>();
     [field: NonSerialized, JsonIgnore] internal List<SecurityActivity> Attachments { get; private set; } = new List<SecurityActivity>();
     [field: NonSerialized, JsonIgnore] internal string Key { get; }
+    [field: NonSerialized, JsonIgnore] internal CancellationToken CancellationToken { get; set; }
 
 
     public int Id { get; set; }
@@ -56,14 +57,14 @@ public class SecurityActivity
 
     internal Task CreateTaskForWait()
     {
-        _finalizationTask = new Task(() => { /* do nothing */ }, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
+        _finalizationTask = new Task(() => { /* do nothing */ }, CancellationToken, TaskCreationOptions.LongRunning); //UNDONE: ?? avoid a lot of LongRunning
         return _finalizationTask;
     }
     internal void StartExecutionTask(CancellationToken cancel)
     {
         //UNDONE: SAQ: ?? Use this instruction instead: _executionTask = ExecuteInternalAsync(cancel); !!caller have to use Parallel.ForEach
         //UNDONE: SAQ: ?? avoid a lot of LongRunning
-        _executionTask = new Task(() => ExecuteInternalAsync(cancel).GetAwaiter().GetResult(),
+        _executionTask = new Task(() => ExecuteInternalAsync(this.CancellationToken).GetAwaiter().GetResult(),
             cancel, TaskCreationOptions.LongRunning);
         _executionTask.Start();
     }
@@ -110,6 +111,7 @@ public class SecurityActivity
         try
         {
             using var op = SnTrace.StartOperation(() => $"SA: ExecuteInternal #SA{Key} (delay: {_delay})");
+
             if (_executionCallback != null)
             {
                 _executionCallback(this);
@@ -120,12 +122,16 @@ public class SecurityActivity
             await Task.Delay(_delay, cancel).ConfigureAwait(false);
             op.Successful = true;
         }
+        catch (TaskCanceledException)
+        {
+            SnTrace.Write(() => $"A security activity execution CANCELED. #SA{Id}");
+        }
         catch (Exception e)
         {
             ExecutionException = e;
 
             // we log this here, because if the activity is not waited for later than the exception would not be logged
-            SnTrace.WriteError(() => $"Error during security activity execution. SA{Id} {e}");
+            SnTrace.WriteError(() => $"Error during security activity execution. #SA{Id} {e}");
         }
     }
 

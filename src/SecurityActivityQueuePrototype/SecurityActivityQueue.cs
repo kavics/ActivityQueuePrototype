@@ -43,8 +43,9 @@ public class CompletionState
 public class SecurityActivityQueue : IDisposable
 {
     private readonly DataHandler _dataHandler;
-    private CancellationTokenSource _activityQueueControllerThreadCancellation;
-    private Task _activityQueueThreadController;
+    private CancellationTokenSource _mainCancellationSource;
+    private CancellationToken _mainCancellationToken;
+    private Task _mainThreadControllerTask;
 
     public SecurityActivityQueue(DataHandler dataHandler)
     {
@@ -53,11 +54,11 @@ public class SecurityActivityQueue : IDisposable
 
     public void Dispose()
     {
-        _activityQueueControllerThreadCancellation.Cancel();
+        _mainCancellationSource.Cancel();
         _waitToWorkSignal.Set();
         Task.Delay(100).GetAwaiter().GetResult();
-        _activityQueueThreadController.Dispose();
-        _activityQueueControllerThreadCancellation.Dispose();
+        _mainThreadControllerTask.Dispose();
+        _mainCancellationSource.Dispose();
 
         //UNDONE: SAQ: remove comment if the cleaning CompletionState is required when disposing the ActivityQueue
         //_lastExecutedId = 0;
@@ -81,10 +82,11 @@ public class SecurityActivityQueue : IDisposable
         _completionState = new CompletionState { LastActivityId = _lastExecutedId, Gaps = _gaps.ToArray() };
 
         // Start worker thread
-        _activityQueueControllerThreadCancellation = new CancellationTokenSource();
-        _activityQueueThreadController = Task.Factory.StartNew(
-            () => ControlActivityQueueThread(_activityQueueControllerThreadCancellation.Token),
-            _activityQueueControllerThreadCancellation.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        _mainCancellationSource = new CancellationTokenSource();
+        _mainCancellationToken = _mainCancellationSource.Token;
+        _mainThreadControllerTask = Task.Factory.StartNew(
+            () => ControlActivityQueueThread(_mainCancellationToken),
+            _mainCancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
         await ExecuteUnprocessedActivitiesAtStartAsync(_lastExecutedId, _gaps, lastDatabaseId, cancel);
     }
@@ -125,6 +127,8 @@ public class SecurityActivityQueue : IDisposable
             SnTrace.Write(() => $"SAQ: Arrive from receiver #SA{activity.Key}");
         else
             SnTrace.Write(() => $"SAQ: Arrive #SA{activity.Key}");
+
+        activity.CancellationToken = CancellationTokenSource.CreateLinkedTokenSource(cancel, _mainCancellationToken).Token;
 
         _arrivalQueue.Enqueue(activity);
         _waitToWorkSignal.Set(); //UNDONE: SAQ: This instruction should replaced to other places (timer?).
